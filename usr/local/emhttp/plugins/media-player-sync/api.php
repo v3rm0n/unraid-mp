@@ -413,6 +413,36 @@ function hasSubdirectories(string $path): bool
     return false;
 }
 
+function checkFoldersSyncStatus(string $uuid, string $share, array $folders): array
+{
+    $player = playerByUuid($uuid);
+    if ($player === null) {
+        return ['synced' => [], 'error' => 'Player not found'];
+    }
+    
+    $mountpoint = (string)($player['mountpoint'] ?? '');
+    if ($mountpoint === '') {
+        return ['synced' => [], 'error' => 'Player not mounted'];
+    }
+    
+    $settings = loadSettings();
+    $musicRoot = trim((string)($settings['musicRoot'] ?? 'Music'), '/');
+    $musicRoot = $musicRoot === '' ? 'Music' : $musicRoot;
+    
+    $destRoot = rtrim($mountpoint, '/') . '/' . $musicRoot;
+    
+    $synced = [];
+    foreach ($folders as $folder) {
+        if (!is_string($folder) || !isSafeRelativePath($folder)) {
+            continue;
+        }
+        $destPath = $destRoot . '/' . $share . '/' . $folder;
+        $synced[$folder] = is_dir($destPath);
+    }
+    
+    return ['synced' => $synced];
+}
+
 function managedFileForPlayer(string $uuid): string
 {
     $safe = preg_replace('/[^A-Za-z0-9_-]/', '-', $uuid);
@@ -636,6 +666,26 @@ switch ($action) {
         }
 
         jsonOut(['ok' => true, 'settings' => $settings]);
+
+    case 'checkSyncStatus':
+        $uuid = (string)($_POST['uuid'] ?? '');
+        $share = (string)($_POST['share'] ?? '');
+        $raw = file_get_contents('php://input');
+        $payload = json_decode((string)$raw, true);
+        $folders = (array)($payload['folders'] ?? []);
+        
+        if ($uuid === '') {
+            jsonOut(['ok' => false, 'error' => 'Missing player uuid'], 400);
+        }
+        if ($share === '') {
+            jsonOut(['ok' => false, 'error' => 'Missing share'], 400);
+        }
+        
+        $result = checkFoldersSyncStatus($uuid, $share, $folders);
+        if (isset($result['error'])) {
+            jsonOut(['ok' => false, 'error' => $result['error'], 'synced' => $result['synced']]);
+        }
+        jsonOut(['ok' => true, 'synced' => $result['synced']]);
 
     case 'sync':
         $uuid = (string)($_POST['uuid'] ?? '');

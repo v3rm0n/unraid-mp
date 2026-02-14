@@ -190,3 +190,15 @@
 .mps-folder-label:hover {
   background: #f0f0f0;
 }
+
+.mps-folder-row.synced .mps-folder-label::after {
+  content: "✓";
+  margin-left: 8px;
+  color: #2d8f45;
+  font-weight: bold;
+  font-size: 12px;
+}
+
+.mps-folder-row.synced {
+  background: #f0f8f0;
+}

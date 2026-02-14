@@ -103,7 +103,8 @@
     currentShare: '',
     currentPath: '',
     folderCache: {},
-    expandedFolders: new Set()
+    expandedFolders: new Set(),
+    syncStatus: {}
   };
 
   const playerSelect = document.getElementById('playerSelect');
@@ -265,6 +266,46 @@
     state.currentPath = path;
     renderFolderTree(folders, path);
     renderBreadcrumb(path);
+    checkSyncStatusForFolders(folders);
+  }
+
+  async function checkSyncStatusForFolders(folders) {
+    if (!state.currentShare || folders.length === 0) return;
+    
+    const playerId = playerSelect.value;
+    if (!playerId) return;
+    
+    const player = state.players.find(p => p.id === playerId);
+    if (!player || !player.mounted) return;
+    
+    const folderPaths = folders.map(f => f.relative);
+    
+    try {
+      const json = await api('checkSyncStatus', 'POST', {
+        uuid: playerId,
+        share: state.currentShare,
+        folders: folderPaths,
+        csrf_token: csrf_token
+      });
+      
+      if (json.ok && json.synced) {
+        Object.assign(state.syncStatus, json.synced);
+        updateFolderSyncIndicators();
+      }
+    } catch (err) {
+      // Silent fail - sync status is optional
+    }
+  }
+
+  function updateFolderSyncIndicators() {
+    folderTree.querySelectorAll('.mps-folder-row').forEach(row => {
+      const path = row.dataset.path;
+      if (path && state.syncStatus[path]) {
+        row.classList.add('synced');
+      } else {
+        row.classList.remove('synced');
+      }
+    });
   }
 
   function renderBreadcrumb(path) {
@@ -415,6 +456,9 @@
     
     container.appendChild(childContainer);
     attachFolderListeners(childContainer);
+    
+    // Check sync status for newly loaded subfolders
+    checkSyncStatusForFolders(folders);
   }
 
   function attachFolderListeners(container) {
