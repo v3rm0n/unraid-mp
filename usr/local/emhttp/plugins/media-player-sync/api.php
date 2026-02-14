@@ -257,15 +257,23 @@ function mountPlayer(string $uuid): array
     $logFile = logDir() . '/mount-' . date('Ymd-His') . '.log';
     $cmd = sprintf('sudo /bin/mount -t vfat %s %s', escapeshellarg($devicePath), escapeshellarg($mountpoint));
     
-    // Log the command for debugging
+    // Log the command for debugging with timing
+    $debugLog = logDir() . '/debug-mount.log';
+    @file_put_contents($debugLog, date('Y-m-d H:i:s') . " [MOUNT START] UUID: $uuid\n", FILE_APPEND);
     @file_put_contents($logFile, "Command: $cmd\nDevice: $devicePath\nMountpoint: $mountpoint\n\n", FILE_APPEND);
     
+    @file_put_contents($debugLog, date('Y-m-d H:i:s') . " [SPAWNING] Command: $cmd\n", FILE_APPEND);
     $spawn = runDetached($cmd, $logFile);
+    @file_put_contents($debugLog, date('Y-m-d H:i:s') . " [SPAWNED] Exit code: {$spawn['code']}\n", FILE_APPEND);
+    
     if ($spawn['code'] !== 0) {
+        @file_put_contents($debugLog, date('Y-m-d H:i:s') . " [FAILED] Failed to start mount command\n", FILE_APPEND);
         return ['ok' => false, 'error' => 'Failed to start mount command', 'logFile' => $logFile, 'output' => $spawn['output']];
     }
 
+    @file_put_contents($debugLog, date('Y-m-d H:i:s') . " [WAITING] Checking mount state...\n", FILE_APPEND);
     if (!waitForMountState($mountpoint, true, 20)) {
+        @file_put_contents($debugLog, date('Y-m-d H:i:s') . " [TIMEOUT] Mount did not complete within 20s\n", FILE_APPEND);
         return [
             'ok' => false,
             'error' => 'Mount did not complete within 20s',
@@ -274,6 +282,7 @@ function mountPlayer(string $uuid): array
         ];
     }
 
+    @file_put_contents($debugLog, date('Y-m-d H:i:s') . " [SUCCESS] Mounted successfully\n", FILE_APPEND);
     return ['ok' => true, 'mountpoint' => $mountpoint, 'message' => 'Mounted', 'logFile' => $logFile];
 }
 
