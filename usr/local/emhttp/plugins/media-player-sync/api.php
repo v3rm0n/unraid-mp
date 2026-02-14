@@ -543,7 +543,9 @@ switch ($action) {
         jsonOut(['ok' => true, 'players' => getPlayers()]);
 
     case 'mount':
+        @file_put_contents($debugEntry, date('Y-m-d H:i:s') . ' MOUNT case entered, POST: ' . print_r($_POST, true) . PHP_EOL, FILE_APPEND);
         $uuid = (string)($_POST['uuid'] ?? '');
+        @file_put_contents($debugEntry, date('Y-m-d H:i:s') . ' MOUNT UUID: ' . $uuid . PHP_EOL, FILE_APPEND);
         jsonOut(mountPlayer($uuid));
 
     case 'unmount':
