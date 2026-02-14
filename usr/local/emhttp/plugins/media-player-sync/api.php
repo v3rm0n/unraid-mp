@@ -113,7 +113,7 @@ function isSafeRelativePath(string $path): bool
         return false;
     }
     // Allow any printable characters except control chars and path separators
-    return (bool)preg_match('/^[^\x00-\x1f\x7f\\\/]+$/u', $path);
+    return (bool)preg_match('#^[^\x00-\x1f\x7f\\\/]+$#u', $path);
 }
 
 function getPlayers(): array
@@ -378,7 +378,7 @@ function listFolders(string $share, string $subPath = ''): array
         }
         // Allow any printable characters except control chars and path separators
         // This handles music folder names like "Selected Ambient Works 85–92 (1992)" and "…I Care Because You Do"
-        if (!preg_match('/^[^\x00-\x1f\x7f\\/]+$/u', $entry)) {
+        if (!preg_match('#^[^\x00-\x1f\x7f\\/]+$#u', $entry)) {
             continue;
         }
         $relative = ($subPath !== '' ? $subPath . '/' : '') . $entry;
