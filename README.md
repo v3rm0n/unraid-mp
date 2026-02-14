@@ -12,7 +12,7 @@ Unraid Media Player Sync plugin for syncing selected music folders to FAT32 medi
 
 ## Project layout
 
-- `media-player-sync.plg` - Unraid plugin manifest (update URLs before release)
+- `media-player-sync.plg` - Unraid plugin manifest
 - `usr/local/emhttp/plugins/media-player-sync/` - plugin UI, API, CSS, and docs
 - `install-local.sh` - helper script to install files locally for testing
 
@@ -27,6 +27,8 @@ Run from the repository root on your Unraid server:
 Then open:
 
 `/plugins/media-player-sync/MediaPlayerSync.page`
+
+The installer also copies `media-player-sync.plg` to `/boot/config/plugins/media-player-sync.plg` so the plugin appears in Unraid's installed plugins list.
 
 ## License
 

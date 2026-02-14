@@ -29,7 +29,7 @@ Then open:
 
 - `/plugins/media-player-sync/MediaPlayerSync.page`
 
-The included `media-player-sync.plg` is a starter manifest and should be updated with your own repository URLs before release.
+`install-local.sh` also registers `media-player-sync.plg` in `/boot/config/plugins/` so it appears in Unraid's plugin list.
 
 ## Sync behavior
 

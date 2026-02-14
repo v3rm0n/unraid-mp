@@ -1,10 +1,10 @@
 <?xml version='1.0' encoding='UTF-8'?>
 <!DOCTYPE PLUGIN [
 <!ENTITY name "media-player-sync">
-<!ENTITY author "OpenCode">
+<!ENTITY author "v3rm0n">
 <!ENTITY version "0.1.0">
 <!ENTITY launch "Settings/MediaPlayerSync">
-<!ENTITY pluginURL "https://raw.githubusercontent.com/example/unraid-media-player-sync/main/media-player-sync.plg">
+<!ENTITY pluginURL "https://raw.githubusercontent.com/v3rm0n/unraid-mp/main/media-player-sync.plg">
 ]>
 <PLUGIN name="&name;" author="&author;" version="&version;" pluginURL="&pluginURL;" launch="&launch;">
   <CHANGES>
@@ -13,16 +13,16 @@
   </CHANGES>
 
   <FILE Name="/usr/local/emhttp/plugins/media-player-sync/MediaPlayerSync.page">
-    <URL>https://raw.githubusercontent.com/example/unraid-media-player-sync/main/usr/local/emhttp/plugins/media-player-sync/MediaPlayerSync.page</URL>
+    <URL>https://raw.githubusercontent.com/v3rm0n/unraid-mp/main/usr/local/emhttp/plugins/media-player-sync/MediaPlayerSync.page</URL>
   </FILE>
   <FILE Name="/usr/local/emhttp/plugins/media-player-sync/api.php">
-    <URL>https://raw.githubusercontent.com/example/unraid-media-player-sync/main/usr/local/emhttp/plugins/media-player-sync/api.php</URL>
+    <URL>https://raw.githubusercontent.com/v3rm0n/unraid-mp/main/usr/local/emhttp/plugins/media-player-sync/api.php</URL>
   </FILE>
   <FILE Name="/usr/local/emhttp/plugins/media-player-sync/plugin.css">
-    <URL>https://raw.githubusercontent.com/example/unraid-media-player-sync/main/usr/local/emhttp/plugins/media-player-sync/plugin.css</URL>
+    <URL>https://raw.githubusercontent.com/v3rm0n/unraid-mp/main/usr/local/emhttp/plugins/media-player-sync/plugin.css</URL>
   </FILE>
   <FILE Name="/usr/local/emhttp/plugins/media-player-sync/README.md">
-    <URL>https://raw.githubusercontent.com/example/unraid-media-player-sync/main/usr/local/emhttp/plugins/media-player-sync/README.md</URL>
+    <URL>https://raw.githubusercontent.com/v3rm0n/unraid-mp/main/usr/local/emhttp/plugins/media-player-sync/README.md</URL>
   </FILE>
 
   <FILE Run="/bin/bash">
