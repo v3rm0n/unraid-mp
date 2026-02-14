@@ -1,0 +1,137 @@
+:root {
+  --mps-bg: #f3f5f7;
+  --mps-card: #ffffff;
+  --mps-line: #d7dde3;
+  --mps-text: #1f2b37;
+  --mps-muted: #5f7285;
+  --mps-accent: #0e7490;
+  --mps-accent-2: #155e75;
+  --mps-ok: #1f8f4b;
+  --mps-err: #be123c;
+}
+
+body {
+  margin: 0;
+  font-family: "Source Sans 3", "Noto Sans", sans-serif;
+  color: var(--mps-text);
+  background: linear-gradient(120deg, #f0f4f8 0%, #e8eef4 100%);
+}
+
+.mps-shell {
+  max-width: 1100px;
+  margin: 24px auto;
+  padding: 0 16px 28px;
+}
+
+h1 {
+  margin: 0;
+  font-size: 30px;
+  letter-spacing: 0.3px;
+}
+
+.mps-subtitle {
+  margin: 8px 0 20px;
+  color: var(--mps-muted);
+}
+
+.mps-card {
+  background: var(--mps-card);
+  border: 1px solid var(--mps-line);
+  border-radius: 14px;
+  padding: 16px;
+  margin-bottom: 14px;
+  box-shadow: 0 4px 20px rgba(15, 23, 42, 0.05);
+}
+
+.mps-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  align-items: center;
+}
+
+.mps-grid {
+  margin-top: 12px;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(220px, 1fr));
+  gap: 14px;
+}
+
+select,
+input,
+button {
+  font: inherit;
+}
+
+select,
+input {
+  width: 100%;
+  border: 1px solid var(--mps-line);
+  border-radius: 8px;
+  padding: 8px;
+  background: #fff;
+}
+
+button {
+  border: 1px solid var(--mps-accent);
+  background: var(--mps-accent);
+  color: white;
+  border-radius: 8px;
+  padding: 8px 12px;
+  cursor: pointer;
+}
+
+button:hover {
+  background: var(--mps-accent-2);
+}
+
+.mps-info {
+  margin-top: 10px;
+  color: var(--mps-muted);
+}
+
+#syncLog {
+  margin-top: 10px;
+  max-height: 320px;
+  overflow: auto;
+  border: 1px solid var(--mps-line);
+  border-radius: 8px;
+  background: #f8fafc;
+  padding: 12px;
+  white-space: pre-wrap;
+}
+
+.mps-toast {
+  position: fixed;
+  right: 18px;
+  bottom: 18px;
+  min-width: 180px;
+  max-width: 320px;
+  color: #fff;
+  border-radius: 8px;
+  padding: 10px 12px;
+  opacity: 0;
+  transform: translateY(8px);
+  transition: opacity 0.2s ease, transform 0.2s ease;
+  pointer-events: none;
+}
+
+.mps-toast.ok,
+.mps-toast.err {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+.mps-toast.ok {
+  background: var(--mps-ok);
+}
+
+.mps-toast.err {
+  background: var(--mps-err);
+}
+
+@media (max-width: 900px) {
+  .mps-grid {
+    grid-template-columns: 1fr;
+  }
+}

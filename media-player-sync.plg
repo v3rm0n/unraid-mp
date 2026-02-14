@@ -1,0 +1,35 @@
+<?xml version='1.0' encoding='UTF-8'?>
+<!DOCTYPE PLUGIN [
+<!ENTITY name "media-player-sync">
+<!ENTITY author "OpenCode">
+<!ENTITY version "0.1.0">
+<!ENTITY launch "Settings/MediaPlayerSync">
+<!ENTITY pluginURL "https://raw.githubusercontent.com/example/unraid-media-player-sync/main/media-player-sync.plg">
+]>
+<PLUGIN name="&name;" author="&author;" version="&version;" pluginURL="&pluginURL;" launch="&launch;">
+  <CHANGES>
+###0.1.0
+- Initial release
+  </CHANGES>
+
+  <FILE Name="/usr/local/emhttp/plugins/media-player-sync/MediaPlayerSync.page">
+    <URL>https://raw.githubusercontent.com/example/unraid-media-player-sync/main/usr/local/emhttp/plugins/media-player-sync/MediaPlayerSync.page</URL>
+  </FILE>
+  <FILE Name="/usr/local/emhttp/plugins/media-player-sync/api.php">
+    <URL>https://raw.githubusercontent.com/example/unraid-media-player-sync/main/usr/local/emhttp/plugins/media-player-sync/api.php</URL>
+  </FILE>
+  <FILE Name="/usr/local/emhttp/plugins/media-player-sync/plugin.css">
+    <URL>https://raw.githubusercontent.com/example/unraid-media-player-sync/main/usr/local/emhttp/plugins/media-player-sync/plugin.css</URL>
+  </FILE>
+  <FILE Name="/usr/local/emhttp/plugins/media-player-sync/README.md">
+    <URL>https://raw.githubusercontent.com/example/unraid-media-player-sync/main/usr/local/emhttp/plugins/media-player-sync/README.md</URL>
+  </FILE>
+
+  <FILE Run="/bin/bash">
+    <INLINE>
+mkdir -p /boot/config/plugins/media-player-sync/logs
+mkdir -p /boot/config/plugins/media-player-sync
+chown -R nobody:users /boot/config/plugins/media-player-sync 2>/dev/null || true
+    </INLINE>
+  </FILE>
+</PLUGIN>
