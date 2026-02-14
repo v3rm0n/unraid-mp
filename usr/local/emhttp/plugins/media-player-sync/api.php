@@ -436,7 +436,9 @@ function checkFoldersSyncStatus(string $uuid, string $share, array $folders): ar
         if (!is_string($folder) || !isSafeRelativePath($folder)) {
             continue;
         }
-        $destPath = $destRoot . '/' . $share . '/' . $folder;
+        // Synced folders are stored at {mountpoint}/{musicRoot}/{folder}
+        // without the share name in the path
+        $destPath = $destRoot . '/' . $folder;
         $synced[$folder] = is_dir($destPath);
     }
     
