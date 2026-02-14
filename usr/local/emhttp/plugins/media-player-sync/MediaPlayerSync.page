@@ -1,6 +1,6 @@
-Menu="Settings"
-Type="menu"
-Title="MediaPlayerSync"
+Menu="UserUtilities"
+Type="xmenu"
+Title="Media Player Sync"
 Icon="fa-music"
 Tag="music"
 Version="0.1.0"
@@ -8,7 +8,4 @@ Author="v3rm0n"
 Markdown="false"
 ---
 <?php
-$requestUri = (string)($_SERVER['REQUEST_URI'] ?? '');
-if (strpos($requestUri, '/Settings/MediaPlayerSync') !== false) {
-    require_once '/usr/local/emhttp/plugins/media-player-sync/MediaPlayerSync.php';
-}
+require_once '/usr/local/emhttp/plugins/media-player-sync/MediaPlayerSync.php';
