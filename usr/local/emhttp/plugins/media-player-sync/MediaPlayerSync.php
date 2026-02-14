@@ -1,57 +1,93 @@
 <link rel="stylesheet" href="/plugins/media-player-sync/plugin.css">
 
-<div class="mps-shell">
-  <h1>Media Player Sync</h1>
-  <p class="mps-subtitle">Mount FAT32 players, select music folders, and sync missing files.</p>
+<div class="mps-wrap">
+  <table class="tablesorter mps-panel">
+    <thead>
+      <tr>
+        <th>
+          <strong><em>Media Player</em></strong>
+          <span class="mps-head-note">Choose a FAT32 player and mount or unmount it.</span>
+        </th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td>
+          <dl>
+            <dt>Detected Player:</dt>
+            <dd>
+              <select id="playerSelect" class="mps-input"></select>
+              <input type="button" id="refreshPlayers" value="Refresh">
+              <input type="button" id="mountPlayer" value="Mount">
+              <input type="button" id="unmountPlayer" value="Unmount">
+            </dd>
+          </dl>
+          <div id="playerInfo" class="mps-info"></div>
+        </td>
+      </tr>
+    </tbody>
+  </table>
 
-  <section class="mps-card">
-    <h2>1) Choose Player</h2>
-    <div class="mps-row">
-      <select id="playerSelect"></select>
-      <button id="refreshPlayers">Refresh</button>
-      <button id="mountPlayer">Mount</button>
-      <button id="unmountPlayer">Unmount</button>
-    </div>
-    <div id="playerInfo" class="mps-info"></div>
-  </section>
+  <table class="tablesorter mps-panel">
+    <thead>
+      <tr>
+        <th>
+          <strong><em>Source Selection</em></strong>
+          <span class="mps-head-note">Select share folders to sync to the player.</span>
+        </th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td>
+          <dl>
+            <dt>Device Music Root:</dt>
+            <dd>
+              <input id="musicRoot" type="text" class="narrow" value="Music" maxlength="64">
+              <input type="button" id="saveSettings" value="Save Selection">
+            </dd>
+          </dl>
 
-  <section class="mps-card">
-    <h2>2) Source Selection</h2>
-    <div class="mps-row">
-      <label for="musicRoot">Device music root:</label>
-      <input id="musicRoot" type="text" value="Music" maxlength="64">
-    </div>
+          <div class="mps-grid">
+            <div>
+              <div class="mps-col-title">Shares</div>
+              <select id="shareSelect" size="10"></select>
+              <div class="mps-actions"><input type="button" id="loadFolders" value="Load Folders"></div>
+            </div>
+            <div>
+              <div class="mps-col-title">Folders In Share</div>
+              <select id="folderSelect" size="10" multiple></select>
+              <div class="mps-actions"><input type="button" id="addSelection" value="Add Selected"></div>
+            </div>
+            <div>
+              <div class="mps-col-title">Selected For Sync</div>
+              <select id="selectedList" size="10" multiple></select>
+              <div class="mps-actions"><input type="button" id="removeSelection" value="Remove Selected"></div>
+            </div>
+          </div>
+        </td>
+      </tr>
+    </tbody>
+  </table>
 
-    <div class="mps-grid">
-      <div>
-        <h3>Shares</h3>
-        <select id="shareSelect" size="10"></select>
-        <button id="loadFolders">Load Folders</button>
-      </div>
-      <div>
-        <h3>Folders In Share</h3>
-        <select id="folderSelect" size="10" multiple></select>
-        <button id="addSelection">Add Selected</button>
-      </div>
-      <div>
-        <h3>Selected For Sync</h3>
-        <select id="selectedList" size="10" multiple></select>
-        <button id="removeSelection">Remove Selected</button>
-      </div>
-    </div>
-
-    <div class="mps-row">
-      <button id="saveSettings">Save Selection</button>
-    </div>
-  </section>
-
-  <section class="mps-card">
-    <h2>3) Sync</h2>
-    <div class="mps-row">
-      <button id="startSync">Sync Now</button>
-    </div>
-    <pre id="syncLog"></pre>
-  </section>
+  <table class="tablesorter mps-panel">
+    <thead>
+      <tr>
+        <th>
+          <strong><em>Sync</em></strong>
+          <span class="mps-head-note">Copy only missing files and prune unselected managed folders.</span>
+        </th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td>
+          <input type="button" id="startSync" value="Sync Now">
+          <pre id="syncLog"></pre>
+        </td>
+      </tr>
+    </tbody>
+  </table>
 
   <div id="toast" class="mps-toast"></div>
 </div>
