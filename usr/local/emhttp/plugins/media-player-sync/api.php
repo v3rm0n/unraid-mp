@@ -375,7 +375,9 @@ function listFolders(string $share, string $subPath = ''): array
         if (!is_dir($fullPath)) {
             continue;
         }
-        if (!preg_match('/^[A-Za-z0-9._\- ()\[\]]+$/', $entry)) {
+        // Allow letters, numbers, common punctuation, spaces, and Unicode word characters
+        // This handles music folder names like "Selected Ambient Works 85–92 (1992)"
+        if (!preg_match('/^[\w\s\-.,()[\]\'"!&+]+$/u', $entry)) {
             continue;
         }
         $relative = ($subPath !== '' ? $subPath . '/' : '') . $entry;
