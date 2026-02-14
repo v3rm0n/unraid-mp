@@ -161,6 +161,64 @@ function playerByUuid(string $uuid): ?array
     return null;
 }
 
+function isMounted(string $mountpoint): bool
+{
+    $mountpoint = rtrim($mountpoint, '/');
+    if ($mountpoint === '') {
+        $mountpoint = '/';
+    }
+
+    $lines = @file('/proc/mounts', FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES);
+    if (!is_array($lines)) {
+        return false;
+    }
+
+    foreach ($lines as $line) {
+        $parts = explode(' ', $line);
+        if (count($parts) < 2) {
+            continue;
+        }
+        $current = str_replace('\\040', ' ', $parts[1]);
+        if ($current === $mountpoint) {
+            return true;
+        }
+    }
+
+    return false;
+}
+
+function runDetached(string $command, string $logFile): array
+{
+    ensureConfigDir();
+    $wrapped = $command . ' > ' . escapeshellarg($logFile) . ' 2>&1 < /dev/null &';
+    return run(sprintf('sh -c %s', escapeshellarg($wrapped)));
+}
+
+function waitForMountState(string $mountpoint, bool $shouldBeMounted, int $timeoutSeconds): bool
+{
+    $deadline = time() + $timeoutSeconds;
+    while (time() <= $deadline) {
+        $mounted = isMounted($mountpoint);
+        if ($mounted === $shouldBeMounted) {
+            return true;
+        }
+        usleep(300000);
+    }
+    return false;
+}
+
+function readTail(string $file, int $lines = 20): array
+{
+    if (!is_file($file)) {
+        return [];
+    }
+    $content = @file($file, FILE_IGNORE_NEW_LINES);
+    if (!is_array($content)) {
+        return [];
+    }
+    return array_slice($content, -$lines);
+}
+
 function mountPlayer(string $uuid): array
 {
     $player = playerByUuid($uuid);
@@ -183,16 +241,27 @@ function mountPlayer(string $uuid): array
         return ['ok' => false, 'error' => 'Player has no device path'];
     }
 
-    $cmd = sprintf('timeout 20 mount -t vfat %s %s', escapeshellarg($devicePath), escapeshellarg($mountpoint));
-    $result = run($cmd);
-    if ($result['code'] !== 0) {
-        if ($result['code'] === 124) {
-            return ['ok' => false, 'error' => 'Mount command timed out after 20s'];
-        }
-        return ['ok' => false, 'error' => implode("\n", $result['output'])];
+    if (isMounted($mountpoint)) {
+        return ['ok' => true, 'mountpoint' => $mountpoint, 'message' => 'Already mounted'];
     }
 
-    return ['ok' => true, 'mountpoint' => $mountpoint, 'message' => 'Mounted'];
+    $logFile = configDir() . '/logs/mount-' . date('Ymd-His') . '.log';
+    $cmd = sprintf('/bin/mount -t vfat %s %s', escapeshellarg($devicePath), escapeshellarg($mountpoint));
+    $spawn = runDetached($cmd, $logFile);
+    if ($spawn['code'] !== 0) {
+        return ['ok' => false, 'error' => 'Failed to start mount command', 'logFile' => $logFile, 'output' => $spawn['output']];
+    }
+
+    if (!waitForMountState($mountpoint, true, 20)) {
+        return [
+            'ok' => false,
+            'error' => 'Mount did not complete within 20s',
+            'logFile' => $logFile,
+            'logTail' => readTail($logFile),
+        ];
+    }
+
+    return ['ok' => true, 'mountpoint' => $mountpoint, 'message' => 'Mounted', 'logFile' => $logFile];
 }
 
 function unmountPlayer(string $uuid): array
@@ -206,14 +275,22 @@ function unmountPlayer(string $uuid): array
         return ['ok' => true, 'message' => 'Already unmounted'];
     }
 
-    $result = run(sprintf('timeout 15 umount %s', escapeshellarg($mountpoint)));
-    if ($result['code'] !== 0) {
-        if ($result['code'] === 124) {
-            return ['ok' => false, 'error' => 'Unmount command timed out after 15s'];
-        }
-        return ['ok' => false, 'error' => implode("\n", $result['output'])];
+    $logFile = configDir() . '/logs/unmount-' . date('Ymd-His') . '.log';
+    $spawn = runDetached(sprintf('/bin/umount %s', escapeshellarg($mountpoint)), $logFile);
+    if ($spawn['code'] !== 0) {
+        return ['ok' => false, 'error' => 'Failed to start unmount command', 'logFile' => $logFile, 'output' => $spawn['output']];
     }
-    return ['ok' => true, 'message' => 'Unmounted'];
+
+    if (!waitForMountState($mountpoint, false, 15)) {
+        return [
+            'ok' => false,
+            'error' => 'Unmount did not complete within 15s',
+            'logFile' => $logFile,
+            'logTail' => readTail($logFile),
+        ];
+    }
+
+    return ['ok' => true, 'message' => 'Unmounted', 'logFile' => $logFile];
 }
 
 function listShares(): array

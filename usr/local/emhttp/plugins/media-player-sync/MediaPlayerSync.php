@@ -152,7 +152,14 @@
       throw new Error(`Unexpected response: ${raw.slice(0, 180)}`);
     }
     if (!res.ok || !json.ok) {
-      throw new Error(json.error || 'Request failed');
+      let message = json.error || 'Request failed';
+      if (json.logFile) {
+        message += ` (log: ${json.logFile})`;
+      }
+      if (Array.isArray(json.logTail) && json.logTail.length) {
+        message += ` | ${json.logTail.join(' | ')}`;
+      }
+      throw new Error(message);
     }
     return json;
   }
