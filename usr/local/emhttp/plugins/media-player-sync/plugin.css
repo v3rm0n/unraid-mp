@@ -50,6 +50,20 @@
   color: #666;
 }
 
+.mps-managed-state {
+  margin-top: 4px;
+  color: #555;
+  font-size: 12px;
+}
+
+.mps-sync-preview {
+  margin-bottom: 8px;
+  padding: 8px 10px;
+  border: 1px solid #ddd;
+  background: #f8f8f8;
+  color: #444;
+}
+
 #syncLog {
   margin-top: 10px;
   max-height: 320px;
@@ -201,4 +215,36 @@
 
 .mps-folder-row.synced {
   background: #f0f8f0;
+}
+
+.mps-folder-row.status-add .mps-folder-label::after {
+  content: "+";
+  margin-left: 8px;
+  color: #1766aa;
+  font-weight: bold;
+  font-size: 12px;
+}
+
+.mps-folder-row.status-add {
+  background: #eef6fc;
+}
+
+.mps-folder-row.status-remove .mps-folder-label::after {
+  content: "−";
+  margin-left: 8px;
+  color: #a12a2a;
+  font-weight: bold;
+  font-size: 12px;
+}
+
+.mps-folder-row.status-remove {
+  background: #fdf0f0;
+}
+
+.mps-folder-row.status-external .mps-folder-label::after {
+  content: "•";
+  margin-left: 8px;
+  color: #777;
+  font-weight: bold;
+  font-size: 13px;
 }

@@ -414,36 +414,273 @@ function hasSubdirectories(string $path): bool
     return false;
 }
 
-function checkFoldersSyncStatus(string $uuid, string $share, array $folders): array
+function normalizeMusicRoot(?string $value): string
+{
+    $musicRoot = trim((string)$value, '/');
+    return $musicRoot === '' ? 'Music' : $musicRoot;
+}
+
+function sanitizeSelectedFolders($selected): array
+{
+    if (!is_array($selected)) {
+        return [];
+    }
+
+    $clean = [];
+    $seen = [];
+    foreach ($selected as $entry) {
+        if (!is_array($entry)) {
+            continue;
+        }
+        $share = (string)($entry['share'] ?? '');
+        $folder = trim((string)($entry['folder'] ?? ''), '/');
+        if (!preg_match('/^[A-Za-z0-9._-]+$/', $share)) {
+            continue;
+        }
+        if (!isSafeRelativePath($folder)) {
+            continue;
+        }
+        $key = $share . '/' . $folder;
+        if (isset($seen[$key])) {
+            continue;
+        }
+        $seen[$key] = true;
+        $clean[] = ['share' => $share, 'folder' => $folder];
+    }
+
+    return $clean;
+}
+
+function selectionKey(string $share, string $folder): string
+{
+    return $share . '/' . $folder;
+}
+
+function splitSelectionKey(string $key): ?array
+{
+    $parts = explode('/', $key, 2);
+    if (count($parts) !== 2) {
+        return null;
+    }
+    [$share, $folder] = $parts;
+    if (!preg_match('/^[A-Za-z0-9._-]+$/', $share)) {
+        return null;
+    }
+    if (!isSafeRelativePath($folder)) {
+        return null;
+    }
+    return ['share' => $share, 'folder' => $folder];
+}
+
+function getManagedState(string $uuid): array
+{
+    $file = managedFileForPlayer($uuid);
+    if (!is_file($file)) {
+        return ['managed' => false, 'folders' => []];
+    }
+
+    $raw = readJsonFile($file, []);
+    $folderKeys = [];
+
+    $isList = is_array($raw)
+        && (function_exists('array_is_list')
+            ? array_is_list($raw)
+            : (count($raw) === 0 || array_keys($raw) === range(0, count($raw) - 1)));
+    if ($isList) {
+        $folderKeys = $raw;
+    } elseif (is_array($raw) && isset($raw['folders']) && is_array($raw['folders'])) {
+        $folderKeys = $raw['folders'];
+    }
+
+    $clean = [];
+    foreach ($folderKeys as $key) {
+        if (!is_string($key)) {
+            continue;
+        }
+        $parts = splitSelectionKey($key);
+        if ($parts === null) {
+            continue;
+        }
+        $normalized = selectionKey($parts['share'], $parts['folder']);
+        $clean[$normalized] = true;
+    }
+
+    return ['managed' => true, 'folders' => array_keys($clean)];
+}
+
+function saveManagedState(string $uuid, array $folderKeys): void
+{
+    ensureConfigDir();
+    $clean = [];
+    foreach ($folderKeys as $key) {
+        if (!is_string($key)) {
+            continue;
+        }
+        $parts = splitSelectionKey($key);
+        if ($parts === null) {
+            continue;
+        }
+        $normalized = selectionKey($parts['share'], $parts['folder']);
+        $clean[$normalized] = true;
+    }
+
+    $payload = [
+        'managedBy' => 'media-player-sync',
+        'version' => 1,
+        'updatedAt' => date('c'),
+        'folders' => array_keys($clean),
+    ];
+    @file_put_contents(managedFileForPlayer($uuid), json_encode($payload, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES) . PHP_EOL);
+}
+
+function buildSelectionSet(array $selected): array
+{
+    $set = [];
+    foreach (sanitizeSelectedFolders($selected) as $entry) {
+        $set[selectionKey($entry['share'], $entry['folder'])] = true;
+    }
+    return $set;
+}
+
+function destinationPath(string $mountpoint, string $musicRoot, string $share, string $folder): string
+{
+    return rtrim($mountpoint, '/') . '/' . normalizeMusicRoot($musicRoot) . '/' . selectionKey($share, $folder);
+}
+
+function checkFoldersSyncStatus(
+    string $uuid,
+    string $share,
+    array $folders,
+    ?array $selectedOverride = null,
+    ?string $musicRootOverride = null
+): array
 {
     $player = playerByUuid($uuid);
     if ($player === null) {
-        return ['synced' => [], 'error' => 'Player not found'];
+        return ['statuses' => [], 'error' => 'Player not found'];
     }
-    
+
     $mountpoint = (string)($player['mountpoint'] ?? '');
     if ($mountpoint === '') {
-        return ['synced' => [], 'error' => 'Player not mounted'];
+        return ['statuses' => [], 'error' => 'Player not mounted'];
     }
-    
+
+    if (!preg_match('/^[A-Za-z0-9._-]+$/', $share)) {
+        return ['statuses' => [], 'error' => 'Invalid share'];
+    }
+
     $settings = loadSettings();
-    $musicRoot = trim((string)($settings['musicRoot'] ?? 'Music'), '/');
-    $musicRoot = $musicRoot === '' ? 'Music' : $musicRoot;
-    
-    $destRoot = rtrim($mountpoint, '/') . '/' . $musicRoot;
-    
-    $synced = [];
+    $musicRoot = normalizeMusicRoot($musicRootOverride ?? (string)($settings['musicRoot'] ?? 'Music'));
+    $selectedSet = buildSelectionSet($selectedOverride ?? ($settings['selectedFolders'] ?? []));
+    $managedState = getManagedState($uuid);
+    $managedSet = array_fill_keys($managedState['folders'], true);
+
+    $statuses = [];
     foreach ($folders as $folder) {
         if (!is_string($folder) || !isSafeRelativePath($folder)) {
             continue;
         }
-        // Synced folders are stored at {mountpoint}/{musicRoot}/{folder}
-        // without the share name in the path
-        $destPath = $destRoot . '/' . $folder;
-        $synced[$folder] = is_dir($destPath);
+
+        $key = selectionKey($share, $folder);
+        $exists = is_dir(destinationPath($mountpoint, $musicRoot, $share, $folder));
+        $isSelected = isset($selectedSet[$key]);
+        $isManaged = isset($managedSet[$key]);
+
+        if ($isSelected && $exists) {
+            $statuses[$folder] = 'keep';
+        } elseif ($isSelected && !$exists) {
+            $statuses[$folder] = 'add';
+        } elseif ($isManaged && $exists) {
+            $statuses[$folder] = 'remove';
+        } elseif ($exists) {
+            $statuses[$folder] = 'external';
+        } else {
+            $statuses[$folder] = 'none';
+        }
     }
-    
-    return ['synced' => $synced];
+
+    return [
+        'statuses' => $statuses,
+        'managed' => (bool)$managedState['managed'],
+    ];
+}
+
+function getSyncPreview(string $uuid, ?array $selectedOverride = null, ?string $musicRootOverride = null): array
+{
+    $player = playerByUuid($uuid);
+    if ($player === null) {
+        return ['error' => 'Player not found'];
+    }
+
+    $mountpoint = (string)($player['mountpoint'] ?? '');
+    if ($mountpoint === '') {
+        return ['error' => 'Player not mounted'];
+    }
+
+    $settings = loadSettings();
+    $selected = $selectedOverride ?? ($settings['selectedFolders'] ?? []);
+    $musicRoot = normalizeMusicRoot($musicRootOverride ?? (string)($settings['musicRoot'] ?? 'Music'));
+    $selected = sanitizeSelectedFolders($selected);
+
+    $selectedSet = [];
+    $selectedOut = [];
+    $counts = ['keep' => 0, 'add' => 0, 'remove' => 0, 'external' => 0];
+
+    foreach ($selected as $entry) {
+        $share = $entry['share'];
+        $folder = $entry['folder'];
+        $key = selectionKey($share, $folder);
+        $selectedSet[$key] = true;
+
+        $exists = is_dir(destinationPath($mountpoint, $musicRoot, $share, $folder));
+        $state = $exists ? 'keep' : 'add';
+        $counts[$state]++;
+        $selectedOut[] = [
+            'share' => $share,
+            'folder' => $folder,
+            'key' => $key,
+            'state' => $state,
+            'onDevice' => $exists,
+        ];
+    }
+
+    $managedState = getManagedState($uuid);
+    $removeCandidates = [];
+    if ($managedState['managed']) {
+        foreach ($managedState['folders'] as $managedKey) {
+            if (isset($selectedSet[$managedKey])) {
+                continue;
+            }
+            $parts = splitSelectionKey($managedKey);
+            if ($parts === null) {
+                continue;
+            }
+            $exists = is_dir(destinationPath($mountpoint, $musicRoot, $parts['share'], $parts['folder']));
+            if (!$exists) {
+                continue;
+            }
+            $counts['remove']++;
+            $removeCandidates[] = [
+                'key' => $managedKey,
+                'share' => $parts['share'],
+                'folder' => $parts['folder'],
+            ];
+        }
+    }
+
+    return [
+        'managed' => (bool)$managedState['managed'],
+        'musicRoot' => $musicRoot,
+        'summary' => [
+            'keep' => $counts['keep'],
+            'add' => $counts['add'],
+            'remove' => $counts['remove'],
+            'selected' => count($selectedOut),
+            'managedFolders' => count($managedState['folders']),
+        ],
+        'selected' => $selectedOut,
+        'removeCandidates' => $removeCandidates,
+    ];
 }
 
 function managedFileForPlayer(string $uuid): string
@@ -473,9 +710,8 @@ function syncPlayer(string $uuid): array
 {
     ensureConfigDir();
     $settings = loadSettings();
-    $musicRoot = trim((string)($settings['musicRoot'] ?? 'Music'), '/');
-    $musicRoot = $musicRoot === '' ? 'Music' : $musicRoot;
-    $selected = $settings['selectedFolders'] ?? [];
+    $musicRoot = normalizeMusicRoot((string)($settings['musicRoot'] ?? 'Music'));
+    $selected = sanitizeSelectedFolders($settings['selectedFolders'] ?? []);
 
     if (!is_array($selected) || count($selected) === 0) {
         return ['ok' => false, 'error' => 'No folders selected'];
@@ -508,17 +744,8 @@ function syncPlayer(string $uuid): array
 
     try {
         foreach ($selected as $entry) {
-            if (!is_array($entry)) {
-                continue;
-            }
-            $share = (string)($entry['share'] ?? '');
-            $folder = trim((string)($entry['folder'] ?? ''), '/');
-            if (!preg_match('/^[A-Za-z0-9._-]+$/', $share)) {
-                continue;
-            }
-            if (!isSafeRelativePath($folder)) {
-                continue;
-            }
+            $share = (string)$entry['share'];
+            $folder = (string)$entry['folder'];
 
             $src = '/mnt/user/' . $share . '/' . $folder;
             if (!is_dir($src)) {
@@ -526,7 +753,7 @@ function syncPlayer(string $uuid): array
                 continue;
             }
 
-            $relativeDest = $share . '/' . $folder;
+            $relativeDest = selectionKey($share, $folder);
             $currentManaged[$relativeDest] = true;
             $dest = $destRoot . '/' . $relativeDest;
             if (!is_dir($dest) && !mkdir($dest, 0775, true) && !is_dir($dest)) {
@@ -552,11 +779,7 @@ function syncPlayer(string $uuid): array
             }
         }
 
-        $managedFile = managedFileForPlayer($uuid);
-        $previousManaged = readJsonFile($managedFile, []);
-        if (!is_array($previousManaged)) {
-            $previousManaged = [];
-        }
+        $previousManaged = getManagedState($uuid)['folders'];
 
         $removed = 0;
         foreach ($previousManaged as $oldRelative) {
@@ -582,7 +805,7 @@ function syncPlayer(string $uuid): array
             }
         }
 
-        file_put_contents($managedFile, json_encode(array_keys($currentManaged), JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES) . PHP_EOL);
+        saveManagedState($uuid, array_keys($currentManaged));
 
         $logPath = logDir() . '/sync-' . date('Ymd-His') . '.log';
         @file_put_contents($logPath, implode(PHP_EOL, $log) . PHP_EOL);
@@ -638,26 +861,10 @@ switch ($action) {
             jsonOut(['ok' => false, 'error' => 'Invalid music root'], 400);
         }
 
-        $selected = $payload['selectedFolders'] ?? [];
-        if (!is_array($selected)) {
+        if (!isset($payload['selectedFolders']) || !is_array($payload['selectedFolders'])) {
             jsonOut(['ok' => false, 'error' => 'Invalid selected folders'], 400);
         }
-
-        $cleanSelected = [];
-        foreach ($selected as $entry) {
-            if (!is_array($entry)) {
-                continue;
-            }
-            $share = (string)($entry['share'] ?? '');
-            $folder = trim((string)($entry['folder'] ?? ''), '/');
-            if (!preg_match('/^[A-Za-z0-9._-]+$/', $share)) {
-                continue;
-            }
-            if (!isSafeRelativePath($folder)) {
-                continue;
-            }
-            $cleanSelected[] = ['share' => $share, 'folder' => $folder];
-        }
+        $cleanSelected = sanitizeSelectedFolders($payload['selectedFolders']);
 
         $settings = loadSettings();
         $settings['musicRoot'] = $musicRoot;
@@ -673,22 +880,60 @@ switch ($action) {
     case 'checkSyncStatus':
         $raw = file_get_contents('php://input');
         $payload = json_decode((string)$raw, true);
+        if (!is_array($payload)) {
+            jsonOut(['ok' => false, 'error' => 'Invalid JSON payload'], 400);
+        }
         $uuid = (string)($payload['uuid'] ?? '');
         $share = (string)($payload['share'] ?? '');
         $folders = (array)($payload['folders'] ?? []);
-        
+        $selectedOverride = isset($payload['selectedFolders']) && is_array($payload['selectedFolders'])
+            ? $payload['selectedFolders']
+            : null;
+        $musicRootOverride = isset($payload['musicRoot']) ? (string)$payload['musicRoot'] : null;
+
         if ($uuid === '') {
             jsonOut(['ok' => false, 'error' => 'Missing player uuid'], 400);
         }
         if ($share === '') {
             jsonOut(['ok' => false, 'error' => 'Missing share'], 400);
         }
-        
-        $result = checkFoldersSyncStatus($uuid, $share, $folders);
+
+        $result = checkFoldersSyncStatus($uuid, $share, $folders, $selectedOverride, $musicRootOverride);
         if (isset($result['error'])) {
-            jsonOut(['ok' => false, 'error' => $result['error'], 'synced' => $result['synced']]);
+            jsonOut(['ok' => false, 'error' => $result['error'], 'statuses' => $result['statuses'] ?? []]);
         }
-        jsonOut(['ok' => true, 'synced' => $result['synced']]);
+        $synced = [];
+        foreach (($result['statuses'] ?? []) as $folder => $status) {
+            $synced[$folder] = ($status === 'keep');
+        }
+        jsonOut([
+            'ok' => true,
+            'managed' => (bool)($result['managed'] ?? false),
+            'statuses' => $result['statuses'] ?? [],
+            'synced' => $synced,
+        ]);
+
+    case 'getSyncPreview':
+        $raw = file_get_contents('php://input');
+        $payload = json_decode((string)$raw, true);
+        if (!is_array($payload)) {
+            jsonOut(['ok' => false, 'error' => 'Invalid JSON payload'], 400);
+        }
+        $uuid = (string)($payload['uuid'] ?? '');
+        if ($uuid === '') {
+            jsonOut(['ok' => false, 'error' => 'Missing player uuid'], 400);
+        }
+
+        $selectedOverride = isset($payload['selectedFolders']) && is_array($payload['selectedFolders'])
+            ? $payload['selectedFolders']
+            : null;
+        $musicRootOverride = isset($payload['musicRoot']) ? (string)$payload['musicRoot'] : null;
+
+        $preview = getSyncPreview($uuid, $selectedOverride, $musicRootOverride);
+        if (isset($preview['error'])) {
+            jsonOut(['ok' => false, 'error' => $preview['error']], 400);
+        }
+        jsonOut(array_merge(['ok' => true], $preview));
 
     case 'sync':
         $uuid = (string)($_POST['uuid'] ?? '');

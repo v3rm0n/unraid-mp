@@ -22,6 +22,7 @@
             </dd>
           </dl>
           <div id="playerInfo" class="mps-info"></div>
+          <div id="playerManagedState" class="mps-managed-state"></div>
         </td>
       </tr>
     </tbody>
@@ -85,6 +86,7 @@
     <tbody>
       <tr>
         <td>
+          <div id="syncPreview" class="mps-sync-preview"></div>
           <input type="button" id="startSync" value="Sync Now">
           <pre id="syncLog"></pre>
         </td>
@@ -104,11 +106,14 @@
     currentPath: '',
     folderCache: {},
     expandedFolders: new Set(),
-    syncStatus: {}
+    syncStatus: {},
+    selectedStatus: {},
+    managed: null
   };
 
   const playerSelect = document.getElementById('playerSelect');
   const playerInfo = document.getElementById('playerInfo');
+  const playerManagedState = document.getElementById('playerManagedState');
   const shareSelect = document.getElementById('shareSelect');
   const folderTree = document.getElementById('folderTree');
   const folderBreadcrumb = document.getElementById('folderBreadcrumb');
@@ -116,6 +121,20 @@
   const syncLog = document.getElementById('syncLog');
   const toast = document.getElementById('toast');
   const musicRoot = document.getElementById('musicRoot');
+  const syncPreview = document.getElementById('syncPreview');
+
+  function canonicalKey(share, folder) {
+    return `${share}/${folder}`;
+  }
+
+  function resetStatusState() {
+    state.syncStatus = {};
+    state.selectedStatus = {};
+    state.managed = null;
+    updateFolderSyncIndicators();
+    renderSelected();
+    renderSyncPreview();
+  }
 
   function showToast(message, ok = true) {
     toast.textContent = message;
@@ -198,10 +217,20 @@
     const player = state.players.find((p) => p.id === id);
     if (!player) {
       playerInfo.textContent = 'No FAT32 player found.';
+      playerManagedState.textContent = '';
       updateToggleButton();
       return;
     }
     playerInfo.textContent = `Device: ${player.path} | UUID: ${player.uuid || 'n/a'} | Mount: ${player.mountpoint || 'not mounted'}`;
+    if (!player.mounted) {
+      playerManagedState.textContent = 'Mount a player to preview sync changes.';
+    } else if (state.managed === true) {
+      playerManagedState.textContent = 'Managed by plugin: deselected managed folders can be removed on sync.';
+    } else if (state.managed === false) {
+      playerManagedState.textContent = 'Unmanaged player: sync will add missing folders only (no removals yet).';
+    } else {
+      playerManagedState.textContent = 'Loading player sync state...';
+    }
     updateToggleButton();
   }
 
@@ -210,7 +239,10 @@
     for (const s of state.selected) {
       const opt = document.createElement('option');
       opt.value = `${s.share}:${s.folder}`;
-      opt.textContent = `${s.share}/${s.folder}`;
+      const key = canonicalKey(s.share, s.folder);
+      const status = state.selectedStatus[key];
+      const suffix = status === 'keep' ? ' [On device]' : status === 'add' ? ' [Will add]' : '';
+      opt.textContent = `${s.share}/${s.folder}${suffix}`;
       selectedList.appendChild(opt);
     }
   }
@@ -232,6 +264,75 @@
     }
   }
 
+  function renderSyncPreview(preview = null) {
+    const id = playerSelect.value;
+    const player = state.players.find((p) => p.id === id);
+    if (!player || !player.mounted) {
+      syncPreview.textContent = 'Preview unavailable: mount a player to see add/remove status.';
+      updatePlayerInfo();
+      return;
+    }
+    if (!preview) {
+      syncPreview.textContent = 'Loading sync preview...';
+      updatePlayerInfo();
+      return;
+    }
+
+    const managedText = state.managed ? 'Managed' : 'Unmanaged';
+    const keep = preview.summary?.keep || 0;
+    const add = preview.summary?.add || 0;
+    const remove = preview.summary?.remove || 0;
+    const selected = preview.summary?.selected || 0;
+    syncPreview.textContent = `${managedText} | Selected: ${selected} | On device: ${keep} | To add: ${add} | To remove: ${remove}`;
+    updatePlayerInfo();
+  }
+
+  async function loadSyncPreview(silent = true) {
+    const playerId = playerSelect.value;
+    if (!playerId) {
+      resetStatusState();
+      return;
+    }
+
+    const player = state.players.find((p) => p.id === playerId);
+    if (!player || !player.mounted) {
+      resetStatusState();
+      return;
+    }
+
+    renderSyncPreview(null);
+    try {
+      const json = await api('getSyncPreview', 'POST', {
+        uuid: playerId,
+        musicRoot: musicRoot.value.trim() || 'Music',
+        selectedFolders: state.selected,
+        csrf_token: csrf_token
+      });
+      state.managed = !!json.managed;
+      state.selectedStatus = {};
+      for (const entry of json.selected || []) {
+        state.selectedStatus[entry.key] = entry.state;
+      }
+      renderSelected();
+      renderSyncPreview(json);
+    } catch (err) {
+      if (!silent) {
+        showToast(`Sync preview failed: ${err.message}`, false);
+      }
+      syncPreview.textContent = `Preview unavailable: ${err.message}`;
+    }
+  }
+
+  async function refreshCurrentFolderStatuses(silent = true) {
+    const cacheKey = `${state.currentShare}:${state.currentPath}`;
+    const folders = state.folderCache[cacheKey] || [];
+    if (folders.length > 0) {
+      await checkSyncStatusForFolders(folders, silent);
+    } else {
+      updateFolderSyncIndicators();
+    }
+  }
+
   async function loadFolders() {
     const share = shareSelect.value;
     if (!share) {
@@ -242,6 +343,7 @@
     state.currentPath = '';
     state.folderCache = {};
     state.expandedFolders.clear();
+    state.syncStatus = {};
     await loadFolderTree('');
   }
 
@@ -269,8 +371,9 @@
     checkSyncStatusForFolders(folders);
   }
 
-  async function checkSyncStatusForFolders(folders) {
+  async function checkSyncStatusForFolders(folders, silent = true) {
     if (!state.currentShare || folders.length === 0) return;
+    const share = state.currentShare;
     
     const playerId = playerSelect.value;
     if (!playerId) return;
@@ -283,27 +386,41 @@
     try {
       const json = await api('checkSyncStatus', 'POST', {
         uuid: playerId,
-        share: state.currentShare,
+        share: share,
         folders: folderPaths,
+        musicRoot: musicRoot.value.trim() || 'Music',
+        selectedFolders: state.selected,
         csrf_token: csrf_token
       });
       
-      if (json.ok && json.synced) {
-        Object.assign(state.syncStatus, json.synced);
+      if (json.ok && json.statuses) {
+        state.managed = !!json.managed;
+        Object.entries(json.statuses).forEach(([relative, status]) => {
+          state.syncStatus[canonicalKey(share, relative)] = status;
+        });
         updateFolderSyncIndicators();
+        updatePlayerInfo();
       }
     } catch (err) {
-      // Silent fail - sync status is optional
+      if (!silent) {
+        showToast(`Folder status check failed: ${err.message}`, false);
+      }
     }
   }
 
   function updateFolderSyncIndicators() {
     folderTree.querySelectorAll('.mps-folder-row').forEach(row => {
       const path = row.dataset.path;
-      if (path && state.syncStatus[path]) {
-        row.classList.add('synced');
-      } else {
-        row.classList.remove('synced');
+      const status = path ? state.syncStatus[canonicalKey(state.currentShare, path)] : 'none';
+      row.classList.remove('synced', 'status-keep', 'status-add', 'status-remove', 'status-external');
+      if (status === 'keep') {
+        row.classList.add('synced', 'status-keep');
+      } else if (status === 'add') {
+        row.classList.add('status-add');
+      } else if (status === 'remove') {
+        row.classList.add('status-remove');
+      } else if (status === 'external') {
+        row.classList.add('status-external');
       }
     });
   }
@@ -504,8 +621,10 @@
     const res = await api('getSettings');
     musicRoot.value = res.settings.musicRoot || 'Music';
     state.selected = Array.isArray(res.settings.selectedFolders) ? res.settings.selectedFolders : [];
+    resetStatusState();
     renderSelected();
     await loadPlayers(res.settings.lastPlayerId || '');
+    await loadSyncPreview();
   }
 
   async function saveSettings() {
@@ -516,6 +635,8 @@
       csrf_token: csrf_token
     };
     await api('saveSettings', 'POST', payload);
+    await loadSyncPreview();
+    await refreshCurrentFolderStatuses();
     showToast('Settings saved');
   }
 
@@ -574,6 +695,9 @@
       showToast(json.message || 'Mounted');
     }
     await loadPlayers(id);
+    state.syncStatus = {};
+    await loadSyncPreview();
+    await refreshCurrentFolderStatuses();
   }
 
   async function syncNow() {
@@ -617,9 +741,17 @@
     } else {
       showToast('Sync complete');
     }
+
+    state.syncStatus = {};
+    await loadSyncPreview();
+    await refreshCurrentFolderStatuses();
   }
 
-  document.getElementById('refreshPlayers').addEventListener('click', () => loadPlayers(playerSelect.value));
+  document.getElementById('refreshPlayers').addEventListener('click', async () => {
+    await loadPlayers(playerSelect.value);
+    await loadSyncPreview();
+    await refreshCurrentFolderStatuses();
+  });
   document.getElementById('toggleMount').addEventListener('click', toggleMount);
   document.getElementById('loadFolders').addEventListener('click', loadFolders);
   document.getElementById('saveSettings').addEventListener('click', async () => {
@@ -630,7 +762,21 @@
     }
   });
   document.getElementById('startSync').addEventListener('click', syncNow);
-  playerSelect.addEventListener('change', updatePlayerInfo);
+  playerSelect.addEventListener('change', async () => {
+    state.syncStatus = {};
+    state.selectedStatus = {};
+    state.managed = null;
+    updateFolderSyncIndicators();
+    renderSelected();
+    updatePlayerInfo();
+    await loadSyncPreview();
+    await refreshCurrentFolderStatuses();
+  });
+
+  musicRoot.addEventListener('change', async () => {
+    await loadSyncPreview();
+    await refreshCurrentFolderStatuses();
+  });
 
   document.getElementById('addSelection').addEventListener('click', () => {
     const share = state.currentShare || shareSelect.value;
@@ -651,6 +797,8 @@
     }
     state.selected.sort((a, b) => `${a.share}/${a.folder}`.localeCompare(`${b.share}/${b.folder}`));
     renderSelected();
+    loadSyncPreview();
+    refreshCurrentFolderStatuses();
     showToast(`Added ${checked.length} folder(s)`);
   });
 
@@ -664,6 +812,8 @@
     const removed = new Set(Array.from(selectedList.selectedOptions).map((o) => o.value));
     state.selected = state.selected.filter((x) => !removed.has(`${x.share}:${x.folder}`));
     renderSelected();
+    loadSyncPreview();
+    refreshCurrentFolderStatuses();
   });
 
   (async function init() {
