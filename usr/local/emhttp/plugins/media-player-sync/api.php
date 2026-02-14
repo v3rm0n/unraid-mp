@@ -82,6 +82,25 @@ function readJsonFile(string $file, array $default): array
     return is_array($decoded) ? $decoded : $default;
 }
 
+function readRequestPayload(): array
+{
+    $formPayload = $_POST['payload'] ?? null;
+    if (is_string($formPayload) && $formPayload !== '') {
+        $decoded = json_decode($formPayload, true);
+        if (is_array($decoded)) {
+            return $decoded;
+        }
+    }
+
+    $raw = file_get_contents('php://input');
+    if (!is_string($raw) || $raw === '') {
+        return [];
+    }
+
+    $decoded = json_decode($raw, true);
+    return is_array($decoded) ? $decoded : [];
+}
+
 function saveSettings(array $settings): bool
 {
     ensureConfigDir();
@@ -850,8 +869,7 @@ switch ($action) {
         jsonOut(['ok' => true, 'settings' => loadSettings()]);
 
     case 'saveSettings':
-        $raw = file_get_contents('php://input');
-        $payload = json_decode((string)$raw, true);
+        $payload = readRequestPayload();
         if (!is_array($payload)) {
             jsonOut(['ok' => false, 'error' => 'Invalid JSON payload'], 400);
         }
@@ -878,8 +896,7 @@ switch ($action) {
         jsonOut(['ok' => true, 'settings' => $settings]);
 
     case 'checkSyncStatus':
-        $raw = file_get_contents('php://input');
-        $payload = json_decode((string)$raw, true);
+        $payload = readRequestPayload();
         if (!is_array($payload)) {
             jsonOut(['ok' => false, 'error' => 'Invalid JSON payload'], 400);
         }
@@ -914,8 +931,7 @@ switch ($action) {
         ]);
 
     case 'getSyncPreview':
-        $raw = file_get_contents('php://input');
-        $payload = json_decode((string)$raw, true);
+        $payload = readRequestPayload();
         if (!is_array($payload)) {
             jsonOut(['ok' => false, 'error' => 'Invalid JSON payload'], 400);
         }

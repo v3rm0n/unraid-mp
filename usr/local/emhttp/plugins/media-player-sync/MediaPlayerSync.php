@@ -308,12 +308,16 @@
 
     renderSyncPreview(null);
     try {
-      const json = await api('getSyncPreview', 'POST', {
+      const payload = {
         uuid: playerId,
         musicRoot: musicRoot.value.trim() || 'Music',
         selectedFolders: state.selected,
         csrf_token: csrf_token
-      });
+      };
+      const form = new URLSearchParams();
+      form.append('payload', JSON.stringify(payload));
+      form.append('csrf_token', csrf_token);
+      const json = await api('getSyncPreview', 'POST', form);
       state.managed = !!json.managed;
       state.selectedStatus = {};
       for (const entry of json.selected || []) {
@@ -390,14 +394,18 @@
     const folderPaths = folders.map(f => f.relative);
     
     try {
-      const json = await api('checkSyncStatus', 'POST', {
+      const payload = {
         uuid: playerId,
         share: share,
         folders: folderPaths,
         musicRoot: musicRoot.value.trim() || 'Music',
         selectedFolders: state.selected,
         csrf_token: csrf_token
-      });
+      };
+      const form = new URLSearchParams();
+      form.append('payload', JSON.stringify(payload));
+      form.append('csrf_token', csrf_token);
+      const json = await api('checkSyncStatus', 'POST', form);
       
       if (json.ok && json.statuses) {
         state.managed = !!json.managed;
@@ -640,7 +648,10 @@
       lastPlayerId: playerSelect.value || '',
       csrf_token: csrf_token
     };
-    await api('saveSettings', 'POST', payload);
+    const form = new URLSearchParams();
+    form.append('payload', JSON.stringify(payload));
+    form.append('csrf_token', csrf_token);
+    await api('saveSettings', 'POST', form);
     await loadSyncPreview();
     await refreshCurrentFolderStatuses();
     showToast('Settings saved');
