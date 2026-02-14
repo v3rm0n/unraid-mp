@@ -114,7 +114,7 @@ function isSafeRelativePath(string $path): bool
     }
     // Allow any printable characters except control chars and backslashes
     // Forward slashes are allowed for hierarchical paths like "Artist/Album/CD 01"
-    return (bool)preg_match('#^[^\x00-\x1f\x7f\\]+$#u', $path);
+    return (bool)preg_match("#^[^\x00-\x1f\x7f\\\\]+$#u", $path);
 }
 
 function getPlayers(): array
