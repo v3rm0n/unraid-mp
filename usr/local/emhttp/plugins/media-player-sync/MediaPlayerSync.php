@@ -239,6 +239,7 @@
     }
     state.currentShare = share;
     state.currentPath = '';
+    state.folderCache = {};
     state.expandedFolders.clear();
     await loadFolderTree('');
   }
@@ -285,21 +286,21 @@
     
     folderBreadcrumb.querySelectorAll('.mps-crumb-root, .mps-crumb-part').forEach(el => {
       el.addEventListener('click', () => {
+        // Clear the tree and reload from this level
+        folderTree.innerHTML = '';
+        state.expandedFolders.clear();
         loadFolderTree(el.dataset.path);
       });
     });
   }
 
   function renderFolderTree(folders, parentPath) {
-    const indent = parentPath ? (parentPath.split('/').length * 20) : 0;
-    
-    if (!parentPath) {
-      folderTree.innerHTML = '';
-    }
+    // Always clear and rebuild the tree view for the current level
+    folderTree.innerHTML = '';
     
     const container = document.createElement('div');
     container.className = 'mps-folder-list';
-    container.style.marginLeft = `${indent}px`;
+    container.dataset.level = parentPath ? parentPath.split('/').length : 0;
     
     for (const folder of folders) {
       const row = document.createElement('div');
@@ -315,20 +316,55 @@
         html += `<span class="mps-folder-spacer"></span>`;
       }
       
-      html += `<label class="mps-folder-label"><input type="checkbox" value="${folder.relative}"> ${folder.name}</label>`;
+      html += `<label class="mps-folder-label"><input type="checkbox" value="${folder.relative}"> ${escapeHtml(folder.name)}</label>`;
+      row.innerHTML = html;
+      container.appendChild(row);
+      
+      // If this folder was previously expanded, render its children inline
+      if (folder.hasChildren && isExpanded) {
+        const childContainer = document.createElement('div');
+        childContainer.className = 'mps-folder-children';
+        childContainer.dataset.parent = folder.relative;
+        renderSubfolderList(childContainer, folder.relative);
+        container.appendChild(childContainer);
+      }
+    }
+    
+    folderTree.appendChild(container);
+    attachFolderListeners(container);
+  }
+
+  function renderSubfolderList(container, parentPath) {
+    const cacheKey = `${state.currentShare}:${parentPath}`;
+    const folders = state.folderCache[cacheKey];
+    if (!folders) return;
+    
+    for (const folder of folders) {
+      const row = document.createElement('div');
+      row.className = 'mps-folder-row mps-folder-child';
+      row.dataset.path = folder.relative;
+      
+      const isExpanded = state.expandedFolders.has(folder.relative);
+      
+      let html = '';
+      if (folder.hasChildren) {
+        html += `<span class="mps-folder-toggle ${isExpanded ? 'expanded' : ''}" data-path="${folder.relative}">${isExpanded ? '−' : '+'}</span>`;
+      } else {
+        html += `<span class="mps-folder-spacer"></span>`;
+      }
+      
+      html += `<label class="mps-folder-label"><input type="checkbox" value="${folder.relative}"> ${escapeHtml(folder.name)}</label>`;
       row.innerHTML = html;
       container.appendChild(row);
       
       if (folder.hasChildren && isExpanded) {
-        loadSubfolders(folder.relative, container);
+        const childContainer = document.createElement('div');
+        childContainer.className = 'mps-folder-children';
+        childContainer.dataset.parent = folder.relative;
+        renderSubfolderList(childContainer, folder.relative);
+        container.appendChild(childContainer);
       }
     }
-    
-    if (!parentPath) {
-      folderTree.appendChild(container);
-    }
-    
-    attachFolderListeners(container);
   }
 
   async function loadSubfolders(path, container) {
@@ -346,15 +382,13 @@
       }
     }
     
-    const indent = path.split('/').length * 20;
-    const subContainer = document.createElement('div');
-    subContainer.className = 'mps-folder-list';
-    subContainer.style.marginLeft = `${indent}px`;
-    subContainer.dataset.parent = path;
+    const childContainer = document.createElement('div');
+    childContainer.className = 'mps-folder-children';
+    childContainer.dataset.parent = path;
     
     for (const folder of folders) {
       const row = document.createElement('div');
-      row.className = 'mps-folder-row';
+      row.className = 'mps-folder-row mps-folder-child';
       row.dataset.path = folder.relative;
       
       const isExpanded = state.expandedFolders.has(folder.relative);
@@ -366,17 +400,21 @@
         html += `<span class="mps-folder-spacer"></span>`;
       }
       
-      html += `<label class="mps-folder-label"><input type="checkbox" value="${folder.relative}"> ${folder.name}</label>`;
+      html += `<label class="mps-folder-label"><input type="checkbox" value="${folder.relative}"> ${escapeHtml(folder.name)}</label>`;
       row.innerHTML = html;
-      subContainer.appendChild(row);
+      childContainer.appendChild(row);
       
       if (folder.hasChildren && isExpanded) {
-        loadSubfolders(folder.relative, subContainer);
+        const nestedContainer = document.createElement('div');
+        nestedContainer.className = 'mps-folder-children';
+        nestedContainer.dataset.parent = folder.relative;
+        renderSubfolderList(nestedContainer, folder.relative);
+        childContainer.appendChild(nestedContainer);
       }
     }
     
-    container.appendChild(subContainer);
-    attachFolderListeners(subContainer);
+    container.appendChild(childContainer);
+    attachFolderListeners(childContainer);
   }
 
   function attachFolderListeners(container) {
@@ -386,23 +424,36 @@
         e.stopPropagation();
         const path = toggle.dataset.path;
         const isExpanded = state.expandedFolders.has(path);
+        const row = toggle.closest('.mps-folder-row');
         
         if (isExpanded) {
           state.expandedFolders.delete(path);
           toggle.classList.remove('expanded');
           toggle.textContent = '+';
-          const subContainer = container.querySelector(`div[data-parent="${path}"]`);
-          if (subContainer) {
-            subContainer.remove();
+          // Remove the child container that follows this row
+          const childContainer = row.nextElementSibling;
+          if (childContainer && childContainer.classList.contains('mps-folder-children')) {
+            childContainer.remove();
           }
         } else {
           state.expandedFolders.add(path);
           toggle.classList.add('expanded');
           toggle.textContent = '−';
-          await loadSubfolders(path, toggle.closest('.mps-folder-list'));
+          // Load and insert children after this row
+          const parentContainer = document.createElement('div');
+          parentContainer.className = 'mps-folder-children';
+          parentContainer.dataset.parent = path;
+          row.insertAdjacentElement('afterend', parentContainer);
+          await loadSubfolders(path, parentContainer);
         }
       });
     });
+  }
+
+  function escapeHtml(text) {
+    const div = document.createElement('div');
+    div.textContent = text;
+    return div.innerHTML;
   }
 
   async function loadSettings() {

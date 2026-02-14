@@ -136,11 +136,21 @@
   margin: 0;
 }
 
+.mps-folder-children {
+  margin-left: 20px;
+  border-left: 1px solid #ddd;
+  padding-left: 4px;
+}
+
 .mps-folder-row {
   display: flex;
   align-items: center;
   padding: 3px 0;
   min-height: 24px;
+}
+
+.mps-folder-child {
+  padding-left: 4px;
 }
 
 .mps-folder-toggle {
