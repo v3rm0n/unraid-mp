@@ -247,6 +247,10 @@ function mountPlayer(string $uuid): array
 
     $logFile = configDir() . '/logs/mount-' . date('Ymd-His') . '.log';
     $cmd = sprintf('sudo /bin/mount -t vfat %s %s', escapeshellarg($devicePath), escapeshellarg($mountpoint));
+    
+    // Log the command for debugging
+    file_put_contents($logFile, "Command: $cmd\nDevice: $devicePath\nMountpoint: $mountpoint\n\n", FILE_APPEND);
+    
     $spawn = runDetached($cmd, $logFile);
     if ($spawn['code'] !== 0) {
         return ['ok' => false, 'error' => 'Failed to start mount command', 'logFile' => $logFile, 'output' => $spawn['output']];

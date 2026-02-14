@@ -2,12 +2,16 @@
 <!DOCTYPE PLUGIN [
 <!ENTITY name "media-player-sync">
 <!ENTITY author "v3rm0n">
-<!ENTITY version "0.1.1">
+<!ENTITY version "0.1.2">
 <!ENTITY launch "UserUtilities/MediaPlayerSync">
 <!ENTITY pluginURL "https://raw.githubusercontent.com/v3rm0n/unraid-mp/main/media-player-sync.plg">
 ]>
 <PLUGIN name="&name;" author="&author;" version="&version;" pluginURL="&pluginURL;" launch="&launch;">
   <CHANGES>
+###0.1.2
+- Fix sudoers configuration to properly allow mount commands
+- Add debugging logs to mount operations
+
 ###0.1.1
 - Add sudoers configuration for mount/unmount privileges
 - Move plugin from Settings to User Utilities menu
@@ -35,7 +39,8 @@
   <FILE Name="/etc/sudoers.d/media-player-sync" Mode="0440">
     <INLINE>
 # Allow nobody user to mount/unmount FAT32 devices for media-player-sync plugin
-Cmnd_Alias MPS_MOUNT = /bin/mount -t vfat *, /bin/umount *
+# Allow mount with any vfat arguments and umount with any arguments
+Cmnd_Alias MPS_MOUNT = /bin/mount -t vfat *, /bin/umount *, /usr/bin/umount *
 nobody ALL=(root) NOPASSWD: MPS_MOUNT
     </INLINE>
   </FILE>
