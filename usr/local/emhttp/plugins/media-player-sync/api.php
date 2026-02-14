@@ -670,10 +670,10 @@ switch ($action) {
         jsonOut(['ok' => true, 'settings' => $settings]);
 
     case 'checkSyncStatus':
-        $uuid = (string)($_POST['uuid'] ?? '');
-        $share = (string)($_POST['share'] ?? '');
         $raw = file_get_contents('php://input');
         $payload = json_decode((string)$raw, true);
+        $uuid = (string)($payload['uuid'] ?? '');
+        $share = (string)($payload['share'] ?? '');
         $folders = (array)($payload['folders'] ?? []);
         
         if ($uuid === '') {
