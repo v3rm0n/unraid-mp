@@ -126,11 +126,16 @@
       opts.signal = controller.signal;
       timeoutId = setTimeout(() => controller.abort(), timeoutMs);
     }
-    if (method === 'POST' && body && !(body instanceof FormData)) {
-      opts.headers = { 'Content-Type': 'application/json' };
-      opts.body = JSON.stringify(body);
-    } else if (method === 'POST' && body instanceof FormData) {
-      opts.body = body;
+    if (method === 'POST' && body) {
+      if (body instanceof URLSearchParams) {
+        opts.headers = { 'Content-Type': 'application/x-www-form-urlencoded' };
+        opts.body = body.toString();
+      } else if (body instanceof FormData) {
+        opts.body = body;
+      } else {
+        opts.headers = { 'Content-Type': 'application/json' };
+        opts.body = JSON.stringify(body);
+      }
     }
     let res;
     let raw;
@@ -264,12 +269,12 @@
       return;
     }
     showToast('Mounting player...');
-    const data = new FormData();
+    const data = new URLSearchParams();
     data.append('uuid', id);
     data.append('csrf_token', csrf_token);
     let json;
     try {
-      json = await api('mount', 'POST', data);
+      json = await api('mount', 'POST', data, '', 30000, 'application/x-www-form-urlencoded');
     } catch (err) {
       showToast(`Mount failed: ${err.message}`, false);
       return;
@@ -285,7 +290,7 @@
       return;
     }
     showToast('Unmounting player...');
-    const data = new FormData();
+    const data = new URLSearchParams();
     data.append('uuid', id);
     data.append('csrf_token', csrf_token);
     let json;
@@ -309,7 +314,7 @@
     }
 
     syncLog.textContent = 'Running sync...';
-    const data = new FormData();
+    const data = new URLSearchParams();
     data.append('uuid', id);
     data.append('csrf_token', csrf_token);
     let json;
