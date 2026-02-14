@@ -147,7 +147,13 @@
   async function api(action, method = 'GET', body = null, query = '', timeoutMs = 30000) {
     const opts = { method };
     const suffix = query ? `&${query}` : '';
-    const url = `${apiBase}?action=${encodeURIComponent(action)}${suffix}`;
+    const needsCsrfQuery = method === 'POST'
+      && !(body instanceof URLSearchParams)
+      && !(body instanceof FormData)
+      && typeof csrf_token !== 'undefined'
+      && csrf_token;
+    const csrfSuffix = needsCsrfQuery ? `&csrf_token=${encodeURIComponent(csrf_token)}` : '';
+    const url = `${apiBase}?action=${encodeURIComponent(action)}${suffix}${csrfSuffix}`;
     const controller = timeoutMs > 0 ? new AbortController() : null;
     let timeoutId = null;
     if (controller) {
