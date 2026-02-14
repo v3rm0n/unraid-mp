@@ -1,12 +1,11 @@
-<!doctype html>
-<html lang="en">
-<head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Media Player Sync</title>
-  <link rel="stylesheet" href="/plugins/media-player-sync/plugin.css">
-</head>
-<body>
+Menu="Settings"
+Title="MediaPlayerSync"
+Icon="fa-music"
+Version="0.1.0"
+Author="v3rm0n"
+
+<link rel="stylesheet" href="/plugins/media-player-sync/plugin.css">
+
   <div class="mps-shell">
     <h1>Media Player Sync</h1>
     <p class="mps-subtitle">Mount FAT32 players, select music folders, and sync missing files.</p>
@@ -329,5 +328,3 @@
       }
     })();
   </script>
-</body>
-</html>
