@@ -8,4 +8,7 @@ Author="v3rm0n"
 Markdown="false"
 ---
 <?php
-require_once '/usr/local/emhttp/plugins/media-player-sync/MediaPlayerSync.php';
+$requestUri = (string)($_SERVER['REQUEST_URI'] ?? '');
+if (strpos($requestUri, '/Settings/MediaPlayerSync') !== false) {
+    require_once '/usr/local/emhttp/plugins/media-player-sync/MediaPlayerSync.php';
+}
