@@ -28,8 +28,20 @@
     <URL>https://raw.githubusercontent.com/v3rm0n/unraid-mp/main/usr/local/emhttp/plugins/media-player-sync/README.md</URL>
   </FILE>
 
+  <FILE Name="/etc/sudoers.d/media-player-sync" Mode="0440">
+    <INLINE>
+# Allow nobody user to mount/unmount FAT32 devices for media-player-sync plugin
+Cmnd_Alias MPS_MOUNT = /bin/mount -t vfat *, /bin/umount *
+nobody ALL=(root) NOPASSWD: MPS_MOUNT
+    </INLINE>
+  </FILE>
+
   <FILE Run="/bin/bash">
     <INLINE>
+# Ensure sudoers file has correct permissions
+chmod 0440 /etc/sudoers.d/media-player-sync 2>/dev/null || true
+
+# Create plugin directories
 mkdir -p /boot/config/plugins/media-player-sync/logs
 mkdir -p /boot/config/plugins/media-player-sync
 chown -R nobody:users /boot/config/plugins/media-player-sync 2>/dev/null || true

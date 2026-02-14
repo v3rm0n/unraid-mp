@@ -246,7 +246,7 @@ function mountPlayer(string $uuid): array
     }
 
     $logFile = configDir() . '/logs/mount-' . date('Ymd-His') . '.log';
-    $cmd = sprintf('/bin/mount -t vfat %s %s', escapeshellarg($devicePath), escapeshellarg($mountpoint));
+    $cmd = sprintf('sudo /bin/mount -t vfat %s %s', escapeshellarg($devicePath), escapeshellarg($mountpoint));
     $spawn = runDetached($cmd, $logFile);
     if ($spawn['code'] !== 0) {
         return ['ok' => false, 'error' => 'Failed to start mount command', 'logFile' => $logFile, 'output' => $spawn['output']];
@@ -276,7 +276,7 @@ function unmountPlayer(string $uuid): array
     }
 
     $logFile = configDir() . '/logs/unmount-' . date('Ymd-His') . '.log';
-    $spawn = runDetached(sprintf('/bin/umount %s', escapeshellarg($mountpoint)), $logFile);
+    $spawn = runDetached(sprintf('sudo /bin/umount %s', escapeshellarg($mountpoint)), $logFile);
     if ($spawn['code'] !== 0) {
         return ['ok' => false, 'error' => 'Failed to start unmount command', 'logFile' => $logFile, 'output' => $spawn['output']];
     }
