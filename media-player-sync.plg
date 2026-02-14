@@ -15,6 +15,9 @@
   <FILE Name="/usr/local/emhttp/plugins/media-player-sync/MediaPlayerSync.page">
     <URL>https://raw.githubusercontent.com/v3rm0n/unraid-mp/main/usr/local/emhttp/plugins/media-player-sync/MediaPlayerSync.page</URL>
   </FILE>
+  <FILE Name="/usr/local/emhttp/plugins/media-player-sync/MediaPlayerSync.php">
+    <URL>https://raw.githubusercontent.com/v3rm0n/unraid-mp/main/usr/local/emhttp/plugins/media-player-sync/MediaPlayerSync.php</URL>
+  </FILE>
   <FILE Name="/usr/local/emhttp/plugins/media-player-sync/api.php">
     <URL>https://raw.githubusercontent.com/v3rm0n/unraid-mp/main/usr/local/emhttp/plugins/media-player-sync/api.php</URL>
   </FILE>

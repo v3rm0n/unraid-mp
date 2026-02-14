@@ -1,0 +1,323 @@
+<link rel="stylesheet" href="/plugins/media-player-sync/plugin.css">
+
+<div class="mps-shell">
+  <h1>Media Player Sync</h1>
+  <p class="mps-subtitle">Mount FAT32 players, select music folders, and sync missing files.</p>
+
+  <section class="mps-card">
+    <h2>1) Choose Player</h2>
+    <div class="mps-row">
+      <select id="playerSelect"></select>
+      <button id="refreshPlayers">Refresh</button>
+      <button id="mountPlayer">Mount</button>
+      <button id="unmountPlayer">Unmount</button>
+    </div>
+    <div id="playerInfo" class="mps-info"></div>
+  </section>
+
+  <section class="mps-card">
+    <h2>2) Source Selection</h2>
+    <div class="mps-row">
+      <label for="musicRoot">Device music root:</label>
+      <input id="musicRoot" type="text" value="Music" maxlength="64">
+    </div>
+
+    <div class="mps-grid">
+      <div>
+        <h3>Shares</h3>
+        <select id="shareSelect" size="10"></select>
+        <button id="loadFolders">Load Folders</button>
+      </div>
+      <div>
+        <h3>Folders In Share</h3>
+        <select id="folderSelect" size="10" multiple></select>
+        <button id="addSelection">Add Selected</button>
+      </div>
+      <div>
+        <h3>Selected For Sync</h3>
+        <select id="selectedList" size="10" multiple></select>
+        <button id="removeSelection">Remove Selected</button>
+      </div>
+    </div>
+
+    <div class="mps-row">
+      <button id="saveSettings">Save Selection</button>
+    </div>
+  </section>
+
+  <section class="mps-card">
+    <h2>3) Sync</h2>
+    <div class="mps-row">
+      <button id="startSync">Sync Now</button>
+    </div>
+    <pre id="syncLog"></pre>
+  </section>
+
+  <div id="toast" class="mps-toast"></div>
+</div>
+
+<script>
+  const apiBase = '/plugins/media-player-sync/api.php';
+  const state = {
+    players: [],
+    selected: []
+  };
+
+  const playerSelect = document.getElementById('playerSelect');
+  const playerInfo = document.getElementById('playerInfo');
+  const shareSelect = document.getElementById('shareSelect');
+  const folderSelect = document.getElementById('folderSelect');
+  const selectedList = document.getElementById('selectedList');
+  const syncLog = document.getElementById('syncLog');
+  const toast = document.getElementById('toast');
+  const musicRoot = document.getElementById('musicRoot');
+
+  function showToast(message, ok = true) {
+    toast.textContent = message;
+    toast.className = ok ? 'mps-toast ok' : 'mps-toast err';
+    setTimeout(() => {
+      toast.className = 'mps-toast';
+    }, 3000);
+  }
+
+  async function api(action, method = 'GET', body = null) {
+    const opts = { method };
+    const url = `${apiBase}?action=${encodeURIComponent(action)}`;
+    if (method === 'POST' && body && !(body instanceof FormData)) {
+      opts.headers = { 'Content-Type': 'application/json' };
+      opts.body = JSON.stringify(body);
+    } else if (method === 'POST' && body instanceof FormData) {
+      opts.body = body;
+    }
+    const res = await fetch(url, opts);
+    const json = await res.json();
+    if (!res.ok || !json.ok) {
+      throw new Error(json.error || 'Request failed');
+    }
+    return json;
+  }
+
+  function renderPlayers(lastId = '') {
+    playerSelect.innerHTML = '';
+    for (const p of state.players) {
+      const label = p.label ? p.label : p.path;
+      const opt = document.createElement('option');
+      opt.value = p.id;
+      opt.textContent = `${label} (${p.size || 'unknown'})${p.mounted ? ' [mounted]' : ''}`;
+      if (lastId && p.id === lastId) {
+        opt.selected = true;
+      }
+      playerSelect.appendChild(opt);
+    }
+    updatePlayerInfo();
+  }
+
+  function updatePlayerInfo() {
+    const id = playerSelect.value;
+    const player = state.players.find((p) => p.id === id);
+    if (!player) {
+      playerInfo.textContent = 'No FAT32 player found.';
+      return;
+    }
+    playerInfo.textContent = `Device: ${player.path} | UUID: ${player.uuid || 'n/a'} | Mount: ${player.mountpoint || 'not mounted'}`;
+  }
+
+  function renderSelected() {
+    selectedList.innerHTML = '';
+    for (const s of state.selected) {
+      const opt = document.createElement('option');
+      opt.value = `${s.share}:${s.folder}`;
+      opt.textContent = `${s.share}/${s.folder}`;
+      selectedList.appendChild(opt);
+    }
+  }
+
+  async function loadPlayers(lastId = '') {
+    const res = await api('listPlayers');
+    state.players = res.players;
+    renderPlayers(lastId);
+  }
+
+  async function loadShares() {
+    const res = await api('listShares');
+    shareSelect.innerHTML = '';
+    for (const share of res.shares) {
+      const opt = document.createElement('option');
+      opt.value = share;
+      opt.textContent = share;
+      shareSelect.appendChild(opt);
+    }
+  }
+
+  async function loadFolders() {
+    const share = shareSelect.value;
+    if (!share) {
+      showToast('Select a share first', false);
+      return;
+    }
+    const res = await fetch(`${apiBase}?action=listFolders&share=${encodeURIComponent(share)}`);
+    const json = await res.json();
+    if (!json.ok) {
+      showToast(json.error || 'Failed to load folders', false);
+      return;
+    }
+    folderSelect.innerHTML = '';
+    for (const folder of json.folders) {
+      const opt = document.createElement('option');
+      opt.value = folder;
+      opt.textContent = folder;
+      folderSelect.appendChild(opt);
+    }
+  }
+
+  async function loadSettings() {
+    const res = await api('getSettings');
+    musicRoot.value = res.settings.musicRoot || 'Music';
+    state.selected = Array.isArray(res.settings.selectedFolders) ? res.settings.selectedFolders : [];
+    renderSelected();
+    await loadPlayers(res.settings.lastPlayerId || '');
+  }
+
+  async function saveSettings() {
+    const payload = {
+      musicRoot: musicRoot.value.trim() || 'Music',
+      selectedFolders: state.selected,
+      lastPlayerId: playerSelect.value || ''
+    };
+    const res = await fetch(`${apiBase}?action=saveSettings`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload)
+    });
+    const json = await res.json();
+    if (!json.ok) {
+      throw new Error(json.error || 'Failed to save settings');
+    }
+    showToast('Settings saved');
+  }
+
+  async function mountSelected() {
+    const id = playerSelect.value;
+    if (!id) {
+      showToast('Select a player first', false);
+      return;
+    }
+    const data = new FormData();
+    data.append('uuid', id);
+    const res = await fetch(`${apiBase}?action=mount`, { method: 'POST', body: data });
+    const json = await res.json();
+    if (!json.ok) {
+      showToast(json.error || 'Mount failed', false);
+      return;
+    }
+    showToast(json.message || 'Mounted');
+    await loadPlayers(id);
+  }
+
+  async function unmountSelected() {
+    const id = playerSelect.value;
+    if (!id) {
+      showToast('Select a player first', false);
+      return;
+    }
+    const data = new FormData();
+    data.append('uuid', id);
+    const res = await fetch(`${apiBase}?action=unmount`, { method: 'POST', body: data });
+    const json = await res.json();
+    if (!json.ok) {
+      showToast(json.error || 'Unmount failed', false);
+      return;
+    }
+    showToast(json.message || 'Unmounted');
+    await loadPlayers(id);
+  }
+
+  async function syncNow() {
+    await saveSettings();
+
+    const id = playerSelect.value;
+    if (!id) {
+      showToast('Select a player first', false);
+      return;
+    }
+
+    syncLog.textContent = 'Running sync...';
+    const data = new FormData();
+    data.append('uuid', id);
+    const res = await fetch(`${apiBase}?action=sync`, { method: 'POST', body: data });
+    const json = await res.json();
+    if (!json.ok) {
+      syncLog.textContent = `Error: ${json.error || 'Sync failed'}`;
+      showToast(json.error || 'Sync failed', false);
+      return;
+    }
+
+    const lines = [];
+    lines.push(`Copied files: ${json.copiedFiles}`);
+    lines.push(`Removed unselected folders: ${json.removedDirs}`);
+    if (Array.isArray(json.errors) && json.errors.length > 0) {
+      lines.push('Errors:');
+      for (const e of json.errors) lines.push(`- ${e}`);
+    }
+    lines.push('');
+    lines.push('Log tail:');
+    for (const row of json.logTail || []) lines.push(row);
+    lines.push('');
+    lines.push(`Full log: ${json.logFile}`);
+    syncLog.textContent = lines.join('\n');
+
+    if (Array.isArray(json.errors) && json.errors.length > 0) {
+      showToast('Sync finished with errors', false);
+    } else {
+      showToast('Sync complete');
+    }
+  }
+
+  document.getElementById('refreshPlayers').addEventListener('click', () => loadPlayers(playerSelect.value));
+  document.getElementById('mountPlayer').addEventListener('click', mountSelected);
+  document.getElementById('unmountPlayer').addEventListener('click', unmountSelected);
+  document.getElementById('loadFolders').addEventListener('click', loadFolders);
+  document.getElementById('saveSettings').addEventListener('click', async () => {
+    try {
+      await saveSettings();
+    } catch (err) {
+      showToast(err.message, false);
+    }
+  });
+  document.getElementById('startSync').addEventListener('click', syncNow);
+  playerSelect.addEventListener('change', updatePlayerInfo);
+
+  document.getElementById('addSelection').addEventListener('click', () => {
+    const share = shareSelect.value;
+    const selectedOptions = Array.from(folderSelect.selectedOptions);
+    if (!share || selectedOptions.length === 0) {
+      showToast('Pick share and folder(s)', false);
+      return;
+    }
+
+    const existing = new Set(state.selected.map((x) => `${x.share}:${x.folder}`));
+    for (const opt of selectedOptions) {
+      const key = `${share}:${opt.value}`;
+      if (!existing.has(key)) {
+        state.selected.push({ share, folder: opt.value });
+      }
+    }
+    state.selected.sort((a, b) => `${a.share}/${a.folder}`.localeCompare(`${b.share}/${b.folder}`));
+    renderSelected();
+  });
+
+  document.getElementById('removeSelection').addEventListener('click', () => {
+    const removed = new Set(Array.from(selectedList.selectedOptions).map((o) => o.value));
+    state.selected = state.selected.filter((x) => !removed.has(`${x.share}:${x.folder}`));
+    renderSelected();
+  });
+
+  (async function init() {
+    try {
+      await loadShares();
+      await loadSettings();
+    } catch (err) {
+      showToast(err.message, false);
+    }
+  })();
+</script>
