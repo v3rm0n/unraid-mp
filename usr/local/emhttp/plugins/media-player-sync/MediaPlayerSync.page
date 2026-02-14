@@ -1,9 +1,9 @@
 Menu="Settings"
+Type="xmenu"
 Title="MediaPlayerSync"
 Icon="fa-music"
+Tag="music"
 Version="0.1.0"
 Author="v3rm0n"
 Markdown="false"
 ---
-<?php
-require_once '/usr/local/emhttp/plugins/media-player-sync/MediaPlayerSync.php';
