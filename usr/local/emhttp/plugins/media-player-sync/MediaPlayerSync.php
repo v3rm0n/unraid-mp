@@ -51,12 +51,16 @@
             <div>
               <div class="mps-col-title">Shares</div>
               <select id="shareSelect" size="10"></select>
-              <div class="mps-actions"><input type="button" id="loadFolders" value="Load Folders"></div>
+              <div class="mps-actions"><input type="button" id="loadFolders" value="Browse Folders"></div>
             </div>
             <div>
               <div class="mps-col-title">Folders In Share</div>
-              <select id="folderSelect" size="10" multiple></select>
-              <div class="mps-actions"><input type="button" id="addSelection" value="Add Selected"></div>
+              <div class="mps-breadcrumb" id="folderBreadcrumb"></div>
+              <div id="folderTree" class="mps-folder-tree"></div>
+              <div class="mps-actions">
+                <input type="button" id="addSelection" value="Add Selected">
+                <input type="button" id="selectAllVisible" value="Select All Visible">
+              </div>
             </div>
             <div>
               <div class="mps-col-title">Selected For Sync</div>
@@ -95,13 +99,18 @@
   const apiBase = '/plugins/media-player-sync/api.php';
   const state = {
     players: [],
-    selected: []
+    selected: [],
+    currentShare: '',
+    currentPath: '',
+    folderCache: {},
+    expandedFolders: new Set()
   };
 
   const playerSelect = document.getElementById('playerSelect');
   const playerInfo = document.getElementById('playerInfo');
   const shareSelect = document.getElementById('shareSelect');
-  const folderSelect = document.getElementById('folderSelect');
+  const folderTree = document.getElementById('folderTree');
+  const folderBreadcrumb = document.getElementById('folderBreadcrumb');
   const selectedList = document.getElementById('selectedList');
   const syncLog = document.getElementById('syncLog');
   const toast = document.getElementById('toast');
@@ -228,20 +237,172 @@
       showToast('Select a share first', false);
       return;
     }
-    let json;
-    try {
-      json = await api('listFolders', 'GET', null, `share=${encodeURIComponent(share)}`);
-    } catch (err) {
-      showToast(err.message, false);
+    state.currentShare = share;
+    state.currentPath = '';
+    state.expandedFolders.clear();
+    await loadFolderTree('');
+  }
+
+  async function loadFolderTree(path) {
+    if (!state.currentShare) return;
+    
+    const cacheKey = `${state.currentShare}:${path}`;
+    let folders = state.folderCache[cacheKey];
+    
+    if (!folders) {
+      try {
+        const json = await api('listFolders', 'GET', null, 
+          `share=${encodeURIComponent(state.currentShare)}&path=${encodeURIComponent(path)}`);
+        folders = json.folders;
+        state.folderCache[cacheKey] = folders;
+      } catch (err) {
+        showToast(err.message, false);
+        return;
+      }
+    }
+    
+    state.currentPath = path;
+    renderFolderTree(folders, path);
+    renderBreadcrumb(path);
+  }
+
+  function renderBreadcrumb(path) {
+    if (!state.currentShare) {
+      folderBreadcrumb.innerHTML = '';
       return;
     }
-    folderSelect.innerHTML = '';
-    for (const folder of json.folders) {
-      const opt = document.createElement('option');
-      opt.value = folder;
-      opt.textContent = folder;
-      folderSelect.appendChild(opt);
+    
+    const parts = path ? path.split('/') : [];
+    let html = `<span class="mps-crumb-root" data-path="">${state.currentShare}</span>`;
+    let currentPath = '';
+    
+    for (const part of parts) {
+      currentPath = currentPath ? `${currentPath}/${part}` : part;
+      html += ` / <span class="mps-crumb-part" data-path="${currentPath}">${part}</span>`;
     }
+    
+    folderBreadcrumb.innerHTML = html;
+    
+    folderBreadcrumb.querySelectorAll('.mps-crumb-root, .mps-crumb-part').forEach(el => {
+      el.addEventListener('click', () => {
+        loadFolderTree(el.dataset.path);
+      });
+    });
+  }
+
+  function renderFolderTree(folders, parentPath) {
+    const indent = parentPath ? (parentPath.split('/').length * 20) : 0;
+    
+    if (!parentPath) {
+      folderTree.innerHTML = '';
+    }
+    
+    const container = document.createElement('div');
+    container.className = 'mps-folder-list';
+    container.style.marginLeft = `${indent}px`;
+    
+    for (const folder of folders) {
+      const row = document.createElement('div');
+      row.className = 'mps-folder-row';
+      row.dataset.path = folder.relative;
+      
+      const isExpanded = state.expandedFolders.has(folder.relative);
+      
+      let html = '';
+      if (folder.hasChildren) {
+        html += `<span class="mps-folder-toggle ${isExpanded ? 'expanded' : ''}" data-path="${folder.relative}">${isExpanded ? '−' : '+'}</span>`;
+      } else {
+        html += `<span class="mps-folder-spacer"></span>`;
+      }
+      
+      html += `<label class="mps-folder-label"><input type="checkbox" value="${folder.relative}"> ${folder.name}</label>`;
+      row.innerHTML = html;
+      container.appendChild(row);
+      
+      if (folder.hasChildren && isExpanded) {
+        loadSubfolders(folder.relative, container);
+      }
+    }
+    
+    if (!parentPath) {
+      folderTree.appendChild(container);
+    }
+    
+    attachFolderListeners(container);
+  }
+
+  async function loadSubfolders(path, container) {
+    const cacheKey = `${state.currentShare}:${path}`;
+    let folders = state.folderCache[cacheKey];
+    
+    if (!folders) {
+      try {
+        const json = await api('listFolders', 'GET', null,
+          `share=${encodeURIComponent(state.currentShare)}&path=${encodeURIComponent(path)}`);
+        folders = json.folders;
+        state.folderCache[cacheKey] = folders;
+      } catch (err) {
+        return;
+      }
+    }
+    
+    const indent = path.split('/').length * 20;
+    const subContainer = document.createElement('div');
+    subContainer.className = 'mps-folder-list';
+    subContainer.style.marginLeft = `${indent}px`;
+    subContainer.dataset.parent = path;
+    
+    for (const folder of folders) {
+      const row = document.createElement('div');
+      row.className = 'mps-folder-row';
+      row.dataset.path = folder.relative;
+      
+      const isExpanded = state.expandedFolders.has(folder.relative);
+      
+      let html = '';
+      if (folder.hasChildren) {
+        html += `<span class="mps-folder-toggle ${isExpanded ? 'expanded' : ''}" data-path="${folder.relative}">${isExpanded ? '−' : '+'}</span>`;
+      } else {
+        html += `<span class="mps-folder-spacer"></span>`;
+      }
+      
+      html += `<label class="mps-folder-label"><input type="checkbox" value="${folder.relative}"> ${folder.name}</label>`;
+      row.innerHTML = html;
+      subContainer.appendChild(row);
+      
+      if (folder.hasChildren && isExpanded) {
+        loadSubfolders(folder.relative, subContainer);
+      }
+    }
+    
+    container.appendChild(subContainer);
+    attachFolderListeners(subContainer);
+  }
+
+  function attachFolderListeners(container) {
+    container.querySelectorAll('.mps-folder-toggle').forEach(toggle => {
+      toggle.addEventListener('click', async (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        const path = toggle.dataset.path;
+        const isExpanded = state.expandedFolders.has(path);
+        
+        if (isExpanded) {
+          state.expandedFolders.delete(path);
+          toggle.classList.remove('expanded');
+          toggle.textContent = '+';
+          const subContainer = container.querySelector(`div[data-parent="${path}"]`);
+          if (subContainer) {
+            subContainer.remove();
+          }
+        } else {
+          state.expandedFolders.add(path);
+          toggle.classList.add('expanded');
+          toggle.textContent = '−';
+          await loadSubfolders(path, toggle.closest('.mps-folder-list'));
+        }
+      });
+    });
   }
 
   async function loadSettings() {
@@ -377,22 +538,31 @@
   playerSelect.addEventListener('change', updatePlayerInfo);
 
   document.getElementById('addSelection').addEventListener('click', () => {
-    const share = shareSelect.value;
-    const selectedOptions = Array.from(folderSelect.selectedOptions);
-    if (!share || selectedOptions.length === 0) {
+    const share = state.currentShare || shareSelect.value;
+    const checked = folderTree.querySelectorAll('input[type="checkbox"]:checked');
+    if (!share || checked.length === 0) {
       showToast('Pick share and folder(s)', false);
       return;
     }
 
     const existing = new Set(state.selected.map((x) => `${x.share}:${x.folder}`));
-    for (const opt of selectedOptions) {
-      const key = `${share}:${opt.value}`;
+    for (const cb of checked) {
+      const folder = cb.value;
+      const key = `${share}:${folder}`;
       if (!existing.has(key)) {
-        state.selected.push({ share, folder: opt.value });
+        state.selected.push({ share, folder });
+        existing.add(key);
       }
     }
     state.selected.sort((a, b) => `${a.share}/${a.folder}`.localeCompare(`${b.share}/${b.folder}`));
     renderSelected();
+    showToast(`Added ${checked.length} folder(s)`);
+  });
+
+  document.getElementById('selectAllVisible').addEventListener('click', () => {
+    const checkboxes = folderTree.querySelectorAll('input[type="checkbox"]');
+    const allChecked = Array.from(checkboxes).every(cb => cb.checked);
+    checkboxes.forEach(cb => cb.checked = !allChecked);
   });
 
   document.getElementById('removeSelection').addEventListener('click', () => {

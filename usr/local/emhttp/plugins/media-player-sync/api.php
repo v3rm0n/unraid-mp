@@ -337,7 +337,7 @@ function listShares(): array
     return $shares;
 }
 
-function listFolders(string $share): array
+function listFolders(string $share, string $subPath = ''): array
 {
     if (!preg_match('/^[A-Za-z0-9._-]+$/', $share)) {
         return [];
@@ -347,28 +347,67 @@ function listFolders(string $share): array
         return [];
     }
 
-    $folders = [];
-    $iterator = new RecursiveIteratorIterator(
-        new RecursiveDirectoryIterator($root, FilesystemIterator::SKIP_DOTS),
-        RecursiveIteratorIterator::SELF_FIRST
-    );
-
-    foreach ($iterator as $item) {
-        if (!$item->isDir()) {
-            continue;
+    $currentPath = $root;
+    if ($subPath !== '') {
+        if (!isSafeRelativePath($subPath)) {
+            return [];
         }
-        $fullPath = $item->getPathname();
-        $relative = ltrim(str_replace($root, '', $fullPath), '/');
-        if ($relative === '') {
-            continue;
+        $currentPath = $root . '/' . $subPath;
+        if (!is_dir($currentPath)) {
+            return [];
         }
-        if (!isSafeRelativePath($relative)) {
-            continue;
-        }
-        $folders[] = $relative;
     }
-    sort($folders);
+
+    $folders = [];
+    $entries = @scandir($currentPath);
+    if ($entries === false) {
+        return [];
+    }
+
+    foreach ($entries as $entry) {
+        if ($entry === '.' || $entry === '..') {
+            continue;
+        }
+        if (str_starts_with($entry, '.')) {
+            continue;
+        }
+        $fullPath = $currentPath . '/' . $entry;
+        if (!is_dir($fullPath)) {
+            continue;
+        }
+        if (!preg_match('/^[A-Za-z0-9._\- ()\[\]]+$/', $entry)) {
+            continue;
+        }
+        $relative = ($subPath !== '' ? $subPath . '/' : '') . $entry;
+        $folders[] = [
+            'name' => $entry,
+            'relative' => $relative,
+            'hasChildren' => hasSubdirectories($fullPath),
+        ];
+    }
+
+    usort($folders, fn($a, $b) => strcasecmp($a['name'], $b['name']));
     return $folders;
+}
+
+function hasSubdirectories(string $path): bool
+{
+    $entries = @scandir($path);
+    if ($entries === false) {
+        return false;
+    }
+    foreach ($entries as $entry) {
+        if ($entry === '.' || $entry === '..') {
+            continue;
+        }
+        if (str_starts_with($entry, '.')) {
+            continue;
+        }
+        if (is_dir($path . '/' . $entry)) {
+            return true;
+        }
+    }
+    return false;
 }
 
 function managedFileForPlayer(string $uuid): string
@@ -545,7 +584,8 @@ switch ($action) {
 
     case 'listFolders':
         $share = (string)($_GET['share'] ?? '');
-        jsonOut(['ok' => true, 'folders' => listFolders($share)]);
+        $path = (string)($_GET['path'] ?? '');
+        jsonOut(['ok' => true, 'folders' => listFolders($share, $path)]);
 
     case 'getSettings':
         jsonOut(['ok' => true, 'settings' => loadSettings()]);
