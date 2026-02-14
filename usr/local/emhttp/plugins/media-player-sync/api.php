@@ -1,6 +1,10 @@
 <?php
 declare(strict_types=1);
 
+// Disable output buffering to ensure immediate response
+@ini_set('output_buffering', 'off');
+@ini_set('zlib.output_compression', false);
+
 // Debug: Log API entry
 $debugEntry = '/tmp/media-player-sync-logs/api-entry.log';
 @file_put_contents($debugEntry, date('Y-m-d H:i:s') . ' API called: ' . ($_GET['action'] ?? $_POST['action'] ?? 'none') . PHP_EOL, FILE_APPEND);
@@ -42,7 +46,9 @@ function logDir(): string
 function jsonOut(array $payload, int $status = 200): void
 {
     http_response_code($status);
+    header('Content-Type: application/json');
     echo json_encode($payload, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES);
+    flush();
     exit;
 }
 
