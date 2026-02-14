@@ -116,18 +116,35 @@
     }, 3000);
   }
 
-  async function api(action, method = 'GET', body = null, query = '') {
+  async function api(action, method = 'GET', body = null, query = '', timeoutMs = 30000) {
     const opts = { method };
     const suffix = query ? `&${query}` : '';
     const url = `${apiBase}?action=${encodeURIComponent(action)}${suffix}`;
+    const controller = timeoutMs > 0 ? new AbortController() : null;
+    let timeoutId = null;
+    if (controller) {
+      opts.signal = controller.signal;
+      timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+    }
     if (method === 'POST' && body && !(body instanceof FormData)) {
       opts.headers = { 'Content-Type': 'application/json' };
       opts.body = JSON.stringify(body);
     } else if (method === 'POST' && body instanceof FormData) {
       opts.body = body;
     }
-    const res = await fetch(url, opts);
-    const raw = await res.text();
+    let res;
+    let raw;
+    try {
+      res = await fetch(url, opts);
+      raw = await res.text();
+    } catch (err) {
+      if (err && err.name === 'AbortError') {
+        throw new Error(`Request timed out after ${Math.round(timeoutMs / 1000)}s`);
+      }
+      throw err;
+    } finally {
+      if (timeoutId) clearTimeout(timeoutId);
+    }
     let json;
     try {
       json = JSON.parse(raw);
@@ -238,6 +255,7 @@
       showToast('Select a player first', false);
       return;
     }
+    showToast('Mounting player...');
     const data = new FormData();
     data.append('uuid', id);
     let json;
@@ -257,6 +275,7 @@
       showToast('Select a player first', false);
       return;
     }
+    showToast('Unmounting player...');
     const data = new FormData();
     data.append('uuid', id);
     let json;
@@ -284,7 +303,7 @@
     data.append('uuid', id);
     let json;
     try {
-      json = await api('sync', 'POST', data);
+      json = await api('sync', 'POST', data, '', 0);
     } catch (err) {
       syncLog.textContent = `Error: ${err.message}`;
       showToast(`Sync failed: ${err.message}`, false);

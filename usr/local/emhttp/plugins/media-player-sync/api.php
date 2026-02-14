@@ -183,9 +183,12 @@ function mountPlayer(string $uuid): array
         return ['ok' => false, 'error' => 'Player has no device path'];
     }
 
-    $cmd = sprintf('/bin/mount -t vfat %s %s', escapeshellarg($devicePath), escapeshellarg($mountpoint));
+    $cmd = sprintf('timeout 20 mount -t vfat %s %s', escapeshellarg($devicePath), escapeshellarg($mountpoint));
     $result = run($cmd);
     if ($result['code'] !== 0) {
+        if ($result['code'] === 124) {
+            return ['ok' => false, 'error' => 'Mount command timed out after 20s'];
+        }
         return ['ok' => false, 'error' => implode("\n", $result['output'])];
     }
 
@@ -203,8 +206,11 @@ function unmountPlayer(string $uuid): array
         return ['ok' => true, 'message' => 'Already unmounted'];
     }
 
-    $result = run(sprintf('/bin/umount %s', escapeshellarg($mountpoint)));
+    $result = run(sprintf('timeout 15 umount %s', escapeshellarg($mountpoint)));
     if ($result['code'] !== 0) {
+        if ($result['code'] === 124) {
+            return ['ok' => false, 'error' => 'Unmount command timed out after 15s'];
+        }
         return ['ok' => false, 'error' => implode("\n", $result['output'])];
     }
     return ['ok' => true, 'message' => 'Unmounted'];
