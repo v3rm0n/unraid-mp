@@ -18,8 +18,7 @@
             <dd>
               <select id="playerSelect" class="mps-input"></select>
               <input type="button" id="refreshPlayers" value="Refresh">
-              <input type="button" id="mountPlayer" value="Mount">
-              <input type="button" id="unmountPlayer" value="Unmount">
+              <input type="button" id="toggleMount" value="Mount">
             </dd>
           </dl>
           <div id="playerInfo" class="mps-info"></div>
@@ -189,9 +188,11 @@
     const player = state.players.find((p) => p.id === id);
     if (!player) {
       playerInfo.textContent = 'No FAT32 player found.';
+      updateToggleButton();
       return;
     }
     playerInfo.textContent = `Device: ${player.path} | UUID: ${player.uuid || 'n/a'} | Mount: ${player.mountpoint || 'not mounted'}`;
+    updateToggleButton();
   }
 
   function renderSelected() {
@@ -262,45 +263,60 @@
     showToast('Settings saved');
   }
 
-  async function mountSelected() {
+  function updateToggleButton() {
     const id = playerSelect.value;
-    if (!id) {
-      showToast('Select a player first', false);
+    const player = state.players.find((p) => p.id === id);
+    const btn = document.getElementById('toggleMount');
+    if (!player) {
+      btn.value = 'Mount';
+      btn.disabled = true;
       return;
     }
-    showToast('Mounting player...');
-    const data = new URLSearchParams();
-    data.append('uuid', id);
-    data.append('csrf_token', csrf_token);
-    let json;
-    try {
-      json = await api('mount', 'POST', data, '', 30000, 'application/x-www-form-urlencoded');
-    } catch (err) {
-      showToast(`Mount failed: ${err.message}`, false);
-      return;
+    btn.disabled = false;
+    if (player.mounted) {
+      btn.value = 'Unmount';
+    } else {
+      btn.value = 'Mount';
     }
-    showToast(json.message || 'Mounted');
-    await loadPlayers(id);
   }
 
-  async function unmountSelected() {
+  async function toggleMount() {
     const id = playerSelect.value;
     if (!id) {
       showToast('Select a player first', false);
       return;
     }
-    showToast('Unmounting player...');
+    const player = state.players.find((p) => p.id === id);
+    if (!player) {
+      showToast('Player not found', false);
+      return;
+    }
+
     const data = new URLSearchParams();
     data.append('uuid', id);
     data.append('csrf_token', csrf_token);
-    let json;
-    try {
-      json = await api('unmount', 'POST', data);
-    } catch (err) {
-      showToast(`Unmount failed: ${err.message}`, false);
-      return;
+
+    if (player.mounted) {
+      showToast('Unmounting player...');
+      let json;
+      try {
+        json = await api('unmount', 'POST', data);
+      } catch (err) {
+        showToast(`Unmount failed: ${err.message}`, false);
+        return;
+      }
+      showToast(json.message || 'Unmounted');
+    } else {
+      showToast('Mounting player...');
+      let json;
+      try {
+        json = await api('mount', 'POST', data);
+      } catch (err) {
+        showToast(`Mount failed: ${err.message}`, false);
+        return;
+      }
+      showToast(json.message || 'Mounted');
     }
-    showToast(json.message || 'Unmounted');
     await loadPlayers(id);
   }
 
@@ -348,8 +364,7 @@
   }
 
   document.getElementById('refreshPlayers').addEventListener('click', () => loadPlayers(playerSelect.value));
-  document.getElementById('mountPlayer').addEventListener('click', mountSelected);
-  document.getElementById('unmountPlayer').addEventListener('click', unmountSelected);
+  document.getElementById('toggleMount').addEventListener('click', toggleMount);
   document.getElementById('loadFolders').addEventListener('click', loadFolders);
   document.getElementById('saveSettings').addEventListener('click', async () => {
     try {
@@ -390,6 +405,7 @@
     try {
       await loadShares();
       await loadSettings();
+      updateToggleButton();
     } catch (err) {
       showToast(err.message, false);
     }
