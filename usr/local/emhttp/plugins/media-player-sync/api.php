@@ -26,6 +26,15 @@ function lockFile(): string
     return '/tmp/media-player-sync.lock';
 }
 
+function logDir(): string
+{
+    $dir = '/tmp/media-player-sync-logs';
+    if (!is_dir($dir)) {
+        @mkdir($dir, 0775, true);
+    }
+    return $dir;
+}
+
 function jsonOut(array $payload, int $status = 200): void
 {
     http_response_code($status);
@@ -245,11 +254,11 @@ function mountPlayer(string $uuid): array
         return ['ok' => true, 'mountpoint' => $mountpoint, 'message' => 'Already mounted'];
     }
 
-    $logFile = configDir() . '/logs/mount-' . date('Ymd-His') . '.log';
+    $logFile = logDir() . '/mount-' . date('Ymd-His') . '.log';
     $cmd = sprintf('sudo /bin/mount -t vfat %s %s', escapeshellarg($devicePath), escapeshellarg($mountpoint));
     
     // Log the command for debugging
-    file_put_contents($logFile, "Command: $cmd\nDevice: $devicePath\nMountpoint: $mountpoint\n\n", FILE_APPEND);
+    @file_put_contents($logFile, "Command: $cmd\nDevice: $devicePath\nMountpoint: $mountpoint\n\n", FILE_APPEND);
     
     $spawn = runDetached($cmd, $logFile);
     if ($spawn['code'] !== 0) {
@@ -279,7 +288,7 @@ function unmountPlayer(string $uuid): array
         return ['ok' => true, 'message' => 'Already unmounted'];
     }
 
-    $logFile = configDir() . '/logs/unmount-' . date('Ymd-His') . '.log';
+    $logFile = logDir() . '/unmount-' . date('Ymd-His') . '.log';
     $spawn = runDetached(sprintf('sudo /bin/umount %s', escapeshellarg($mountpoint)), $logFile);
     if ($spawn['code'] !== 0) {
         return ['ok' => false, 'error' => 'Failed to start unmount command', 'logFile' => $logFile, 'output' => $spawn['output']];
@@ -497,8 +506,8 @@ function syncPlayer(string $uuid): array
 
         file_put_contents($managedFile, json_encode(array_keys($currentManaged), JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES) . PHP_EOL);
 
-        $logPath = configDir() . '/logs/sync-' . date('Ymd-His') . '.log';
-        file_put_contents($logPath, implode(PHP_EOL, $log) . PHP_EOL);
+        $logPath = logDir() . '/sync-' . date('Ymd-His') . '.log';
+        @file_put_contents($logPath, implode(PHP_EOL, $log) . PHP_EOL);
 
         return [
             'ok' => count($errors) === 0,
