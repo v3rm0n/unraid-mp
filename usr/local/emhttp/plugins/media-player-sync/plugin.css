@@ -35,11 +35,14 @@
 }
 
 .mps-actions {
-  margin-top: 6px;
+  margin-top: 8px;
 }
 
-.mps-actions input {
-  width: 100%;
+.mps-actions input[type="button"] {
+  width: auto;
+  min-width: 100px;
+  padding: 4px 12px;
+  margin-right: 8px;
 }
 
 .mps-info {
