@@ -64,6 +64,19 @@
   color: #444;
 }
 
+input.mps-danger {
+  margin-right: 8px;
+  background: #c0392b;
+  border-color: #992d22;
+  color: #fff;
+}
+
+input.mps-danger:disabled {
+  background: #ccc;
+  border-color: #bbb;
+  color: #666;
+}
+
 #syncLog {
   margin-top: 10px;
   max-height: 320px;

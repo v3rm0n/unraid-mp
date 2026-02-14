@@ -87,6 +87,7 @@
       <tr>
         <td>
           <div id="syncPreview" class="mps-sync-preview"></div>
+          <input type="button" id="adoptLibrary" value="Adopt From Unraid" class="mps-danger">
           <input type="button" id="startSync" value="Sync Now">
           <pre id="syncLog"></pre>
         </td>
@@ -122,6 +123,7 @@
   const toast = document.getElementById('toast');
   const musicRoot = document.getElementById('musicRoot');
   const syncPreview = document.getElementById('syncPreview');
+  const adoptLibraryButton = document.getElementById('adoptLibrary');
 
   function canonicalKey(share, folder) {
     return `${share}/${folder}`;
@@ -142,6 +144,13 @@
     setTimeout(() => {
       toast.className = 'mps-toast';
     }, 3000);
+  }
+
+  function buildPayloadForm(payload) {
+    const form = new URLSearchParams();
+    form.append('payload', JSON.stringify(payload));
+    form.append('csrf_token', csrf_token);
+    return form;
   }
 
   async function api(action, method = 'GET', body = null, query = '', timeoutMs = 30000) {
@@ -314,10 +323,7 @@
         selectedFolders: state.selected,
         csrf_token: csrf_token
       };
-      const form = new URLSearchParams();
-      form.append('payload', JSON.stringify(payload));
-      form.append('csrf_token', csrf_token);
-      const json = await api('getSyncPreview', 'POST', form);
+      const json = await api('getSyncPreview', 'POST', buildPayloadForm(payload));
       state.managed = !!json.managed;
       state.selectedStatus = {};
       for (const entry of json.selected || []) {
@@ -402,10 +408,7 @@
         selectedFolders: state.selected,
         csrf_token: csrf_token
       };
-      const form = new URLSearchParams();
-      form.append('payload', JSON.stringify(payload));
-      form.append('csrf_token', csrf_token);
-      const json = await api('checkSyncStatus', 'POST', form);
+      const json = await api('checkSyncStatus', 'POST', buildPayloadForm(payload));
       
       if (json.ok && json.statuses) {
         state.managed = !!json.managed;
@@ -648,10 +651,7 @@
       lastPlayerId: playerSelect.value || '',
       csrf_token: csrf_token
     };
-    const form = new URLSearchParams();
-    form.append('payload', JSON.stringify(payload));
-    form.append('csrf_token', csrf_token);
-    await api('saveSettings', 'POST', form);
+    await api('saveSettings', 'POST', buildPayloadForm(payload));
     await loadSyncPreview();
     await refreshCurrentFolderStatuses();
     showToast('Settings saved');
@@ -664,13 +664,100 @@
     if (!player) {
       btn.value = 'Mount';
       btn.disabled = true;
+      adoptLibraryButton.disabled = true;
       return;
     }
     btn.disabled = false;
+    adoptLibraryButton.disabled = !player.mounted;
     if (player.mounted) {
       btn.value = 'Unmount';
     } else {
       btn.value = 'Mount';
+    }
+  }
+
+  async function adoptLibrary() {
+    const id = playerSelect.value;
+    if (!id) {
+      showToast('Select a player first', false);
+      return;
+    }
+
+    const player = state.players.find((p) => p.id === id);
+    if (!player || !player.mounted) {
+      showToast('Mount the player before adopting', false);
+      return;
+    }
+
+    const musicRootValue = musicRoot.value.trim() || 'Music';
+    let preview;
+    try {
+      preview = await api('getAdoptPreview', 'POST', buildPayloadForm({
+        uuid: id,
+        musicRoot: musicRootValue,
+        csrf_token: csrf_token
+      }));
+    } catch (err) {
+      showToast(`Preview failed: ${err.message}`, false);
+      return;
+    }
+
+    const summary = preview.summary || {};
+    const msg = [
+      'Adopt from Unraid will delete unmatched content on the player.',
+      `Files to delete: ${summary.deleteFiles || 0}`,
+      `Directories to delete: ${summary.deleteDirs || 0}`,
+      `Folder roots to manage: ${summary.adoptFolders || 0}`,
+      '',
+      'Continue?'
+    ].join('\n');
+    if (!window.confirm(msg)) {
+      return;
+    }
+
+    syncLog.textContent = 'Running adoption cleanup...';
+    let result;
+    try {
+      result = await api('adoptLibrary', 'POST', buildPayloadForm({
+        uuid: id,
+        musicRoot: musicRootValue,
+        csrf_token: csrf_token
+      }), '', 0);
+    } catch (err) {
+      syncLog.textContent = `Error: ${err.message}`;
+      showToast(`Adoption failed: ${err.message}`, false);
+      return;
+    }
+
+    const lines = [];
+    lines.push(`Deleted files: ${result.deletedFiles || 0}`);
+    lines.push(`Deleted directories: ${result.deletedDirs || 0}`);
+    lines.push(`Adopted folder roots: ${result.adoptedFolders || 0}`);
+    if (Array.isArray(result.errors) && result.errors.length > 0) {
+      lines.push('Errors:');
+      for (const e of result.errors) lines.push(`- ${e}`);
+    }
+    lines.push('');
+    lines.push('Log tail:');
+    for (const row of result.logTail || []) lines.push(row);
+    lines.push('');
+    lines.push(`Full log: ${result.logFile}`);
+    syncLog.textContent = lines.join('\n');
+
+    if (result.settings && Array.isArray(result.settings.selectedFolders)) {
+      state.selected = result.settings.selectedFolders;
+      musicRoot.value = result.settings.musicRoot || musicRootValue;
+      renderSelected();
+    }
+
+    await loadPlayers(id);
+    state.syncStatus = {};
+    await loadSyncPreview(false);
+    await refreshCurrentFolderStatuses(false);
+    if (Array.isArray(result.errors) && result.errors.length > 0) {
+      showToast('Adoption finished with errors', false);
+    } else {
+      showToast('Adoption complete');
     }
   }
 
@@ -779,6 +866,7 @@
     }
   });
   document.getElementById('startSync').addEventListener('click', syncNow);
+  document.getElementById('adoptLibrary').addEventListener('click', adoptLibrary);
   playerSelect.addEventListener('change', async () => {
     state.syncStatus = {};
     state.selectedStatus = {};

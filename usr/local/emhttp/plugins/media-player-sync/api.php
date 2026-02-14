@@ -702,6 +702,231 @@ function getSyncPreview(string $uuid, ?array $selectedOverride = null, ?string $
     ];
 }
 
+function listImmediateDirectories(string $path): array
+{
+    $entries = @scandir($path);
+    if ($entries === false) {
+        return [];
+    }
+
+    $dirs = [];
+    foreach ($entries as $entry) {
+        if ($entry === '.' || $entry === '..' || str_starts_with($entry, '.')) {
+            continue;
+        }
+        $full = $path . '/' . $entry;
+        if (is_dir($full)) {
+            $dirs[] = $entry;
+        }
+    }
+    return $dirs;
+}
+
+function collectAdoptedSelections(string $destRoot): array
+{
+    if (!is_dir($destRoot)) {
+        return [];
+    }
+
+    $selected = [];
+    $seen = [];
+    foreach (listImmediateDirectories($destRoot) as $share) {
+        if (!preg_match('/^[A-Za-z0-9._-]+$/', $share)) {
+            continue;
+        }
+
+        $sharePath = $destRoot . '/' . $share;
+        foreach (listImmediateDirectories($sharePath) as $folder) {
+            $sourceFolder = '/mnt/user/' . $share . '/' . $folder;
+            if (!is_dir($sourceFolder)) {
+                continue;
+            }
+            if (!preg_match('#^[^\x00-\x1f\x7f\\/]+$#u', $folder)) {
+                continue;
+            }
+
+            $entry = ['share' => $share, 'folder' => $folder];
+            $key = selectionKey($entry['share'], $entry['folder']);
+            if (isset($seen[$key])) {
+                continue;
+            }
+            $seen[$key] = true;
+            $selected[] = $entry;
+        }
+    }
+
+    usort($selected, fn($a, $b) => strcasecmp($a['share'] . '/' . $a['folder'], $b['share'] . '/' . $b['folder']));
+    return $selected;
+}
+
+function buildAdoptionPlan(string $mountpoint, string $musicRoot): array
+{
+    $destRoot = rtrim($mountpoint, '/') . '/' . normalizeMusicRoot($musicRoot);
+    $deleteFiles = [];
+    $deleteDirs = [];
+
+    if (is_dir($destRoot)) {
+        $iterator = new RecursiveIteratorIterator(
+            new RecursiveDirectoryIterator($destRoot, FilesystemIterator::SKIP_DOTS),
+            RecursiveIteratorIterator::CHILD_FIRST
+        );
+
+        foreach ($iterator as $item) {
+            $destPath = $item->getPathname();
+            $relative = ltrim(substr($destPath, strlen($destRoot)), '/');
+            if ($relative === '') {
+                continue;
+            }
+
+            $sourcePath = '/mnt/user/' . $relative;
+            if (file_exists($sourcePath)) {
+                continue;
+            }
+
+            if ($item->isDir()) {
+                $deleteDirs[] = $destPath;
+            } else {
+                $deleteFiles[] = $destPath;
+            }
+        }
+    }
+
+    $selected = collectAdoptedSelections($destRoot);
+
+    return [
+        'destRoot' => $destRoot,
+        'deleteFiles' => $deleteFiles,
+        'deleteDirs' => $deleteDirs,
+        'selectedFolders' => $selected,
+    ];
+}
+
+function getAdoptPreview(string $uuid, ?string $musicRootOverride = null): array
+{
+    $player = playerByUuid($uuid);
+    if ($player === null) {
+        return ['error' => 'Player not found'];
+    }
+
+    $mountpoint = (string)($player['mountpoint'] ?? '');
+    if ($mountpoint === '') {
+        return ['error' => 'Player not mounted'];
+    }
+
+    $settings = loadSettings();
+    $musicRoot = normalizeMusicRoot($musicRootOverride ?? (string)($settings['musicRoot'] ?? 'Music'));
+    $plan = buildAdoptionPlan($mountpoint, $musicRoot);
+
+    $sampleDeletes = [];
+    foreach (array_slice($plan['deleteFiles'], 0, 8) as $path) {
+        $sampleDeletes[] = ['type' => 'file', 'path' => $path];
+    }
+    foreach (array_slice($plan['deleteDirs'], 0, 8 - count($sampleDeletes)) as $path) {
+        $sampleDeletes[] = ['type' => 'dir', 'path' => $path];
+    }
+
+    return [
+        'managed' => (bool)getManagedState($uuid)['managed'],
+        'musicRoot' => $musicRoot,
+        'summary' => [
+            'deleteFiles' => count($plan['deleteFiles']),
+            'deleteDirs' => count($plan['deleteDirs']),
+            'adoptFolders' => count($plan['selectedFolders']),
+        ],
+        'sampleDeletes' => $sampleDeletes,
+        'selectedFolders' => $plan['selectedFolders'],
+    ];
+}
+
+function adoptLibrary(string $uuid, ?string $musicRootOverride = null): array
+{
+    $player = playerByUuid($uuid);
+    if ($player === null) {
+        return ['ok' => false, 'error' => 'Player not found'];
+    }
+
+    $mountpoint = (string)($player['mountpoint'] ?? '');
+    if ($mountpoint === '') {
+        return ['ok' => false, 'error' => 'Player must be mounted before adopting'];
+    }
+
+    $settings = loadSettings();
+    $musicRoot = normalizeMusicRoot($musicRootOverride ?? (string)($settings['musicRoot'] ?? 'Music'));
+    $plan = buildAdoptionPlan($mountpoint, $musicRoot);
+
+    if (!acquireLock()) {
+        return ['ok' => false, 'error' => 'Another sync is currently running'];
+    }
+
+    $errors = [];
+    $deletedFiles = 0;
+    $deletedDirs = 0;
+    $log = [];
+    $log[] = '[' . date('Y-m-d H:i:s') . '] Starting adoption cleanup';
+
+    try {
+        foreach ($plan['deleteFiles'] as $path) {
+            if (!is_file($path) && !is_link($path)) {
+                continue;
+            }
+            if (@unlink($path)) {
+                $deletedFiles++;
+            } else {
+                $errors[] = 'Failed to delete file: ' . $path;
+            }
+        }
+
+        foreach ($plan['deleteDirs'] as $path) {
+            if (!is_dir($path)) {
+                continue;
+            }
+            if (@rmdir($path)) {
+                $deletedDirs++;
+            } else {
+                $errors[] = 'Failed to delete directory: ' . $path;
+            }
+        }
+
+        $selected = collectAdoptedSelections($plan['destRoot']);
+        $keys = [];
+        foreach ($selected as $entry) {
+            $keys[] = selectionKey($entry['share'], $entry['folder']);
+        }
+        saveManagedState($uuid, $keys);
+
+        $settings['musicRoot'] = $musicRoot;
+        $settings['selectedFolders'] = $selected;
+        $settings['lastPlayerId'] = $uuid;
+        if (!saveSettings($settings)) {
+            $errors[] = 'Failed to save settings after adoption';
+        }
+
+        $log[] = 'Deleted files: ' . $deletedFiles;
+        $log[] = 'Deleted directories: ' . $deletedDirs;
+        $log[] = 'Adopted roots: ' . count($selected);
+        foreach ($errors as $error) {
+            $log[] = $error;
+        }
+
+        $logPath = logDir() . '/adopt-' . date('Ymd-His') . '.log';
+        @file_put_contents($logPath, implode(PHP_EOL, $log) . PHP_EOL);
+
+        return [
+            'ok' => count($errors) === 0,
+            'deletedFiles' => $deletedFiles,
+            'deletedDirs' => $deletedDirs,
+            'adoptedFolders' => count($selected),
+            'errors' => $errors,
+            'settings' => $settings,
+            'managed' => true,
+            'logFile' => $logPath,
+            'logTail' => array_slice($log, -60),
+        ];
+    } finally {
+        releaseLock();
+    }
+}
+
 function managedFileForPlayer(string $uuid): string
 {
     $safe = preg_replace('/[^A-Za-z0-9_-]/', '-', $uuid);
@@ -950,6 +1175,35 @@ switch ($action) {
             jsonOut(['ok' => false, 'error' => $preview['error']], 400);
         }
         jsonOut(array_merge(['ok' => true], $preview));
+
+    case 'getAdoptPreview':
+        $payload = readRequestPayload();
+        if (!is_array($payload)) {
+            jsonOut(['ok' => false, 'error' => 'Invalid JSON payload'], 400);
+        }
+        $uuid = (string)($payload['uuid'] ?? '');
+        if ($uuid === '') {
+            jsonOut(['ok' => false, 'error' => 'Missing player uuid'], 400);
+        }
+        $musicRootOverride = isset($payload['musicRoot']) ? (string)$payload['musicRoot'] : null;
+
+        $preview = getAdoptPreview($uuid, $musicRootOverride);
+        if (isset($preview['error'])) {
+            jsonOut(['ok' => false, 'error' => $preview['error']], 400);
+        }
+        jsonOut(array_merge(['ok' => true], $preview));
+
+    case 'adoptLibrary':
+        $payload = readRequestPayload();
+        if (!is_array($payload)) {
+            jsonOut(['ok' => false, 'error' => 'Invalid JSON payload'], 400);
+        }
+        $uuid = (string)($payload['uuid'] ?? '');
+        if ($uuid === '') {
+            jsonOut(['ok' => false, 'error' => 'Missing player uuid'], 400);
+        }
+        $musicRootOverride = isset($payload['musicRoot']) ? (string)$payload['musicRoot'] : null;
+        jsonOut(adoptLibrary($uuid, $musicRootOverride));
 
     case 'sync':
         $uuid = (string)($_POST['uuid'] ?? '');
