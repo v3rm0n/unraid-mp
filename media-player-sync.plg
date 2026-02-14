@@ -2,12 +2,16 @@
 <!DOCTYPE PLUGIN [
 <!ENTITY name "media-player-sync">
 <!ENTITY author "v3rm0n">
-<!ENTITY version "0.1.0">
+<!ENTITY version "0.1.1">
 <!ENTITY launch "UserUtilities/MediaPlayerSync">
 <!ENTITY pluginURL "https://raw.githubusercontent.com/v3rm0n/unraid-mp/main/media-player-sync.plg">
 ]>
 <PLUGIN name="&name;" author="&author;" version="&version;" pluginURL="&pluginURL;" launch="&launch;">
   <CHANGES>
+###0.1.1
+- Add sudoers configuration for mount/unmount privileges
+- Move plugin from Settings to User Utilities menu
+
 ###0.1.0
 - Initial release
   </CHANGES>
