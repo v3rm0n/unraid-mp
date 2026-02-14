@@ -116,9 +116,10 @@
     }, 3000);
   }
 
-  async function api(action, method = 'GET', body = null) {
+  async function api(action, method = 'GET', body = null, query = '') {
     const opts = { method };
-    const url = `${apiBase}?action=${encodeURIComponent(action)}`;
+    const suffix = query ? `&${query}` : '';
+    const url = `${apiBase}?action=${encodeURIComponent(action)}${suffix}`;
     if (method === 'POST' && body && !(body instanceof FormData)) {
       opts.headers = { 'Content-Type': 'application/json' };
       opts.body = JSON.stringify(body);
@@ -126,7 +127,13 @@
       opts.body = body;
     }
     const res = await fetch(url, opts);
-    const json = await res.json();
+    const raw = await res.text();
+    let json;
+    try {
+      json = JSON.parse(raw);
+    } catch (err) {
+      throw new Error(`Unexpected response: ${raw.slice(0, 180)}`);
+    }
     if (!res.ok || !json.ok) {
       throw new Error(json.error || 'Request failed');
     }
@@ -191,10 +198,11 @@
       showToast('Select a share first', false);
       return;
     }
-    const res = await fetch(`${apiBase}?action=listFolders&share=${encodeURIComponent(share)}`);
-    const json = await res.json();
-    if (!json.ok) {
-      showToast(json.error || 'Failed to load folders', false);
+    let json;
+    try {
+      json = await api('listFolders', 'GET', null, `share=${encodeURIComponent(share)}`);
+    } catch (err) {
+      showToast(err.message, false);
       return;
     }
     folderSelect.innerHTML = '';
@@ -220,15 +228,7 @@
       selectedFolders: state.selected,
       lastPlayerId: playerSelect.value || ''
     };
-    const res = await fetch(`${apiBase}?action=saveSettings`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload)
-    });
-    const json = await res.json();
-    if (!json.ok) {
-      throw new Error(json.error || 'Failed to save settings');
-    }
+    await api('saveSettings', 'POST', payload);
     showToast('Settings saved');
   }
 
@@ -240,10 +240,11 @@
     }
     const data = new FormData();
     data.append('uuid', id);
-    const res = await fetch(`${apiBase}?action=mount`, { method: 'POST', body: data });
-    const json = await res.json();
-    if (!json.ok) {
-      showToast(json.error || 'Mount failed', false);
+    let json;
+    try {
+      json = await api('mount', 'POST', data);
+    } catch (err) {
+      showToast(`Mount failed: ${err.message}`, false);
       return;
     }
     showToast(json.message || 'Mounted');
@@ -258,10 +259,11 @@
     }
     const data = new FormData();
     data.append('uuid', id);
-    const res = await fetch(`${apiBase}?action=unmount`, { method: 'POST', body: data });
-    const json = await res.json();
-    if (!json.ok) {
-      showToast(json.error || 'Unmount failed', false);
+    let json;
+    try {
+      json = await api('unmount', 'POST', data);
+    } catch (err) {
+      showToast(`Unmount failed: ${err.message}`, false);
       return;
     }
     showToast(json.message || 'Unmounted');
@@ -280,11 +282,12 @@
     syncLog.textContent = 'Running sync...';
     const data = new FormData();
     data.append('uuid', id);
-    const res = await fetch(`${apiBase}?action=sync`, { method: 'POST', body: data });
-    const json = await res.json();
-    if (!json.ok) {
-      syncLog.textContent = `Error: ${json.error || 'Sync failed'}`;
-      showToast(json.error || 'Sync failed', false);
+    let json;
+    try {
+      json = await api('sync', 'POST', data);
+    } catch (err) {
+      syncLog.textContent = `Error: ${err.message}`;
+      showToast(`Sync failed: ${err.message}`, false);
       return;
     }
 

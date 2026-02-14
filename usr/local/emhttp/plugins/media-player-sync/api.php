@@ -49,7 +49,8 @@ function run(string $command): array
 {
     $output = [];
     $code = 0;
-    exec($command . ' 2>&1', $output, $code);
+    $safePath = 'PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin';
+    exec($safePath . ' ' . $command . ' 2>&1', $output, $code);
     return ['code' => $code, 'output' => $output];
 }
 
@@ -177,7 +178,12 @@ function mountPlayer(string $uuid): array
         return ['ok' => false, 'error' => 'Failed to create mountpoint'];
     }
 
-    $cmd = sprintf('mount -t vfat %s %s', escapeshellarg((string)$player['path']), escapeshellarg($mountpoint));
+    $devicePath = (string)($player['path'] ?? '');
+    if ($devicePath === '') {
+        return ['ok' => false, 'error' => 'Player has no device path'];
+    }
+
+    $cmd = sprintf('/bin/mount -t vfat %s %s', escapeshellarg($devicePath), escapeshellarg($mountpoint));
     $result = run($cmd);
     if ($result['code'] !== 0) {
         return ['ok' => false, 'error' => implode("\n", $result['output'])];
@@ -197,7 +203,7 @@ function unmountPlayer(string $uuid): array
         return ['ok' => true, 'message' => 'Already unmounted'];
     }
 
-    $result = run(sprintf('umount %s', escapeshellarg($mountpoint)));
+    $result = run(sprintf('/bin/umount %s', escapeshellarg($mountpoint)));
     if ($result['code'] !== 0) {
         return ['ok' => false, 'error' => implode("\n", $result['output'])];
     }
