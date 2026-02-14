@@ -1,6 +1,10 @@
 <?php
 declare(strict_types=1);
 
+// Debug: Log API entry
+$debugEntry = '/tmp/media-player-sync-logs/api-entry.log';
+@file_put_contents($debugEntry, date('Y-m-d H:i:s') . ' API called: ' . ($_GET['action'] ?? $_POST['action'] ?? 'none') . PHP_EOL, FILE_APPEND);
+
 header('Content-Type: application/json');
 
 function configDir(): string
