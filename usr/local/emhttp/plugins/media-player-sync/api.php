@@ -115,6 +115,12 @@ function getPlayers(): array
     $walker = function (array $device) use (&$walker, &$players): void {
         $children = $device['children'] ?? [];
         if (($device['type'] ?? '') === 'part' && strtolower((string)($device['fstype'] ?? '')) === 'vfat') {
+            $mountpoint = (string)($device['mountpoint'] ?? '');
+            $label = strtoupper((string)($device['label'] ?? ''));
+            if ($mountpoint === '/boot' || $label === 'UNRAID') {
+                return;
+            }
+
             $players[] = [
                 'id' => ($device['uuid'] ?? '') !== '' ? $device['uuid'] : ($device['path'] ?? ''),
                 'path' => $device['path'] ?? '',
