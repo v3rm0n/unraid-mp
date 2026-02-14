@@ -26,7 +26,7 @@ Run from the repository root on your Unraid server:
 
 Then open:
 
-`/plugins/media-player-sync/MediaPlayerSync.page`
+`/Settings/MediaPlayerSync`
 
 The installer also copies `media-player-sync.plg` to `/boot/config/plugins/media-player-sync.plg` so the plugin appears in Unraid's installed plugins list.
 

@@ -18,4 +18,4 @@ else
 fi
 
 echo "Installed plugin files to $TARGET"
-echo "Open Unraid Web UI and browse to /plugins/media-player-sync/MediaPlayerSync.page"
+echo "Open Unraid Web UI and browse to /Settings/MediaPlayerSync"

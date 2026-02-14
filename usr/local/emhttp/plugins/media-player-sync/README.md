@@ -12,7 +12,7 @@ This plugin manages FAT32 media players (for example Rockbox devices) as removab
 
 ## Paths
 
-- Plugin page: `/usr/local/emhttp/plugins/media-player-sync/MediaPlayerSync.page`
+- Plugin page (UI route): `/Settings/MediaPlayerSync`
 - API: `/usr/local/emhttp/plugins/media-player-sync/api.php`
 - Settings: `/boot/config/plugins/media-player-sync/settings.json`
 - Logs: `/boot/config/plugins/media-player-sync/logs/`
@@ -27,7 +27,7 @@ Run from this project root on Unraid:
 
 Then open:
 
-- `/plugins/media-player-sync/MediaPlayerSync.page`
+- `/Settings/MediaPlayerSync`
 
 `install-local.sh` also registers `media-player-sync.plg` in `/boot/config/plugins/` so it appears in Unraid's plugin list.
 

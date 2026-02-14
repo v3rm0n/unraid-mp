@@ -3,7 +3,7 @@
 <!ENTITY name "media-player-sync">
 <!ENTITY author "v3rm0n">
 <!ENTITY version "0.1.0">
-<!ENTITY launch "/plugins/media-player-sync/MediaPlayerSync.page">
+<!ENTITY launch "Settings/MediaPlayerSync">
 <!ENTITY pluginURL "https://raw.githubusercontent.com/v3rm0n/unraid-mp/main/media-player-sync.plg">
 ]>
 <PLUGIN name="&name;" author="&author;" version="&version;" pluginURL="&pluginURL;" launch="&launch;">
