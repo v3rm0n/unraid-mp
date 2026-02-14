@@ -250,7 +250,8 @@
     const payload = {
       musicRoot: musicRoot.value.trim() || 'Music',
       selectedFolders: state.selected,
-      lastPlayerId: playerSelect.value || ''
+      lastPlayerId: playerSelect.value || '',
+      csrf_token: csrf_token
     };
     await api('saveSettings', 'POST', payload);
     showToast('Settings saved');
@@ -265,6 +266,7 @@
     showToast('Mounting player...');
     const data = new FormData();
     data.append('uuid', id);
+    data.append('csrf_token', csrf_token);
     let json;
     try {
       json = await api('mount', 'POST', data);
@@ -285,6 +287,7 @@
     showToast('Unmounting player...');
     const data = new FormData();
     data.append('uuid', id);
+    data.append('csrf_token', csrf_token);
     let json;
     try {
       json = await api('unmount', 'POST', data);
@@ -308,6 +311,7 @@
     syncLog.textContent = 'Running sync...';
     const data = new FormData();
     data.append('uuid', id);
+    data.append('csrf_token', csrf_token);
     let json;
     try {
       json = await api('sync', 'POST', data, '', 0);
