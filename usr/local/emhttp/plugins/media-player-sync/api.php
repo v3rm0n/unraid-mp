@@ -751,6 +751,24 @@ function collectAdoptedSelections(string $destRoot): array
     return $selected;
 }
 
+function isProtectedDeviceRelativePath(string $relativePath): bool
+{
+    $topLevel = explode('/', ltrim($relativePath, '/'), 2)[0] ?? '';
+    if ($topLevel === '') {
+        return false;
+    }
+
+    static $protected = [
+        '.rockbox' => true,
+        'iPod_Control' => true,
+        'Contacts' => true,
+        'Notes' => true,
+        'System Volume Information' => true,
+    ];
+
+    return isset($protected[$topLevel]);
+}
+
 function buildAdoptionPlan(string $mountpoint): array
 {
     $destRoot = rtrim($mountpoint, '/');
@@ -767,6 +785,10 @@ function buildAdoptionPlan(string $mountpoint): array
             $destPath = $item->getPathname();
             $relative = ltrim(substr($destPath, strlen($destRoot)), '/');
             if ($relative === '') {
+                continue;
+            }
+
+            if (isProtectedDeviceRelativePath($relative)) {
                 continue;
             }
 
