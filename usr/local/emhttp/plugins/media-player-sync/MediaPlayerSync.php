@@ -94,6 +94,10 @@
         <td>
           <div id="syncPreview" class="mps-card mps-sync-preview"></div>
           <div class="mps-status-legend">Status: On device (keep) | Missing (add) | Managed only (remove)</div>
+          <div id="syncIndicator" class="mps-sync-indicator" style="display: none;">
+            <span class="mps-spinner"></span>
+            <span class="mps-sync-text">Sync in progress...</span>
+          </div>
           <input type="button" id="adoptLibrary" value="Adopt Existing" class="mps-btn mps-btn-danger">
           <input type="button" id="startSync" value="Sync Now" class="mps-btn mps-btn-primary">
           <pre id="syncLog"></pre>
@@ -117,7 +121,9 @@
     expandedFolders: new Set(),
     syncStatus: {},
     selectedStatus: {},
-    managed: null
+    managed: null,
+    syncPolling: null,
+    isSyncing: false
   };
 
   const playerSelect = document.getElementById('playerSelect');
@@ -131,6 +137,8 @@
   const toast = document.getElementById('toast');
   const syncPreview = document.getElementById('syncPreview');
   const adoptLibraryButton = document.getElementById('adoptLibrary');
+  const syncIndicator = document.getElementById('syncIndicator');
+  const startSyncButton = document.getElementById('startSync');
 
   function canonicalKey(share, folder) {
     return `${share}/${folder}`;
@@ -858,6 +866,48 @@
     await refreshCurrentFolderStatuses();
   }
 
+  function setSyncing(isSyncing) {
+    state.isSyncing = isSyncing;
+    if (isSyncing) {
+      syncIndicator.style.display = 'flex';
+      startSyncButton.disabled = true;
+      startSyncButton.value = 'Syncing...';
+    } else {
+      syncIndicator.style.display = 'none';
+      startSyncButton.disabled = false;
+      startSyncButton.value = 'Sync Now';
+    }
+  }
+
+  async function pollSyncStatus() {
+    try {
+      const json = await api('getSyncStatus');
+      const status = json.status || {};
+
+      if (!status.running) {
+        setSyncing(false);
+        if (state.syncPolling) {
+          clearInterval(state.syncPolling);
+          state.syncPolling = null;
+        }
+
+        syncLog.textContent = 'Sync completed. Refreshing status...';
+        state.syncStatus = {};
+        await loadSyncPreview();
+        await refreshCurrentFolderStatuses();
+        showToast('Sync complete');
+        return;
+      }
+
+      const logTail = status.logTail || [];
+      if (logTail.length > 0) {
+        syncLog.textContent = logTail.join('\n');
+      }
+    } catch (err) {
+      console.error('Sync status poll failed:', err);
+    }
+  }
+
   async function syncNow() {
     await saveSettings({ silent: true });
 
@@ -867,42 +917,23 @@
       return;
     }
 
-    syncLog.textContent = 'Running sync...';
+    setSyncing(true);
+    syncLog.textContent = 'Starting sync...';
+
     const data = new URLSearchParams();
     data.append('uuid', id);
     data.append('csrf_token', csrf_token);
-    let json;
+
     try {
-      json = await api('sync', 'POST', data, '', 0);
+      const json = await api('sync', 'POST', data);
+      syncLog.textContent = `${json.message || 'Sync started'}\nLog: ${json.logFile || 'N/A'}`;
+
+      state.syncPolling = setInterval(pollSyncStatus, 2000);
     } catch (err) {
+      setSyncing(false);
       syncLog.textContent = `Error: ${err.message}`;
       showToast(`Sync failed: ${err.message}`, false);
-      return;
     }
-
-    const lines = [];
-    lines.push(`Copied files: ${json.copiedFiles}`);
-    lines.push(`Removed unselected folders: ${json.removedDirs}`);
-    if (Array.isArray(json.errors) && json.errors.length > 0) {
-      lines.push('Errors:');
-      for (const e of json.errors) lines.push(`- ${e}`);
-    }
-    lines.push('');
-    lines.push('Log tail:');
-    for (const row of json.logTail || []) lines.push(row);
-    lines.push('');
-    lines.push(`Full log: ${json.logFile}`);
-    syncLog.textContent = lines.join('\n');
-
-    if (Array.isArray(json.errors) && json.errors.length > 0) {
-      showToast('Sync finished with errors', false);
-    } else {
-      showToast('Sync complete');
-    }
-
-    state.syncStatus = {};
-    await loadSyncPreview();
-    await refreshCurrentFolderStatuses();
   }
 
   document.getElementById('refreshPlayers').addEventListener('click', async () => {

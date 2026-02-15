@@ -335,3 +335,32 @@
   color: #b71c1c;
   font-weight: 500;
 }
+
+.mps-sync-indicator {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 12px 0;
+  padding: 10px 14px;
+  background: #e3f2fd;
+  border: 1px solid #90caf9;
+  border-radius: 4px;
+  color: #1565c0;
+  font-weight: 500;
+}
+
+.mps-spinner {
+  display: inline-block;
+  width: 16px;
+  height: 16px;
+  border: 2px solid #90caf9;
+  border-top-color: #1565c0;
+  border-radius: 50%;
+  animation: mps-spin 0.8s linear infinite;
+}
+
+@keyframes mps-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}

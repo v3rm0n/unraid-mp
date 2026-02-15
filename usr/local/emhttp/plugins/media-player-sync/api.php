@@ -30,6 +30,41 @@ function lockFile(): string
     return '/tmp/media-player-sync.lock';
 }
 
+function syncStateFile(): string
+{
+    return '/tmp/media-player-sync-state.json';
+}
+
+function readSyncState(): array
+{
+    $file = syncStateFile();
+    if (!is_file($file)) {
+        return ['running' => false];
+    }
+    $raw = @file_get_contents($file);
+    if ($raw === false) {
+        return ['running' => false];
+    }
+    $decoded = json_decode($raw, true);
+    if (!is_array($decoded)) {
+        return ['running' => false];
+    }
+    return $decoded;
+}
+
+function writeSyncState(array $state): void
+{
+    @file_put_contents(syncStateFile(), json_encode($state, JSON_PRETTY_PRINT) . PHP_EOL);
+}
+
+function clearSyncState(): void
+{
+    $file = syncStateFile();
+    if (is_file($file)) {
+        @unlink($file);
+    }
+}
+
 function logDir(): string
 {
     $dir = '/tmp/media-player-sync-logs';
@@ -960,7 +995,7 @@ function releaseLock(): void
     }
 }
 
-function syncPlayer(string $uuid): array
+function doSyncPlayer(string $uuid): array
 {
     ensureConfigDir();
     $settings = loadSettings();
@@ -1073,6 +1108,130 @@ function syncPlayer(string $uuid): array
         ];
     } finally {
         releaseLock();
+    }
+}
+
+function startBackgroundSync(string $uuid): array
+{
+    $state = readSyncState();
+    if ($state['running'] ?? false) {
+        return ['ok' => false, 'error' => 'Another sync is already running'];
+    }
+
+    $settings = loadSettings();
+    $selected = sanitizeSelectedFolders($settings['selectedFolders'] ?? []);
+
+    if (!is_array($selected) || count($selected) === 0) {
+        return ['ok' => false, 'error' => 'No folders selected'];
+    }
+
+    $player = playerByUuid($uuid);
+    if ($player === null) {
+        return ['ok' => false, 'error' => 'Player not found'];
+    }
+    $mountpoint = (string)($player['mountpoint'] ?? '');
+    if ($mountpoint === '') {
+        return ['ok' => false, 'error' => 'Player must be mounted before sync'];
+    }
+
+    $logFile = logDir() . '/sync-' . date('Ymd-His') . '.log';
+
+    writeSyncState([
+        'running' => true,
+        'uuid' => $uuid,
+        'startedAt' => date('c'),
+        'logFile' => $logFile,
+        'progress' => ['current' => 0, 'total' => count($selected), 'currentFolder' => ''],
+    ]);
+
+    $safeUuid = escapeshellarg($uuid);
+    $safeLog = escapeshellarg($logFile);
+    $apiPath = escapeshellarg(__FILE__);
+
+    $cmd = sprintf(
+        'php %s --run-sync=%s --log=%s > /dev/null 2>&1 &',
+        $apiPath,
+        $safeUuid,
+        $safeLog
+    );
+
+    exec($cmd);
+
+    return ['ok' => true, 'message' => 'Sync started in background', 'logFile' => $logFile];
+}
+
+function runBackgroundSync(string $uuid, string $logFile): void
+{
+    $result = doSyncPlayer($uuid);
+
+    $log = [];
+    if (is_file($logFile)) {
+        $existing = @file($logFile, FILE_IGNORE_NEW_LINES);
+        if (is_array($existing)) {
+            $log = $existing;
+        }
+    }
+
+    $log[] = '';
+    $log[] = '[BACKGROUND SYNC COMPLETED]';
+    $log[] = 'Result: ' . ($result['ok'] ? 'SUCCESS' : 'FAILED');
+    $log[] = 'Copied files: ' . ($result['copiedFiles'] ?? 0);
+    $log[] = 'Removed directories: ' . ($result['removedDirs'] ?? 0);
+    if (!empty($result['errors'])) {
+        $log[] = 'Errors:';
+        foreach ($result['errors'] as $error) {
+            $log[] = '  - ' . $error;
+        }
+    }
+
+    @file_put_contents($logFile, implode(PHP_EOL, $log) . PHP_EOL);
+
+    clearSyncState();
+}
+
+function syncPlayer(string $uuid): array
+{
+    return startBackgroundSync($uuid);
+}
+
+function getSyncStatus(): array
+{
+    $state = readSyncState();
+
+    if (!($state['running'] ?? false)) {
+        return ['running' => false];
+    }
+
+    $logTail = [];
+    if (!empty($state['logFile']) && is_file($state['logFile'])) {
+        $logTail = readTail($state['logFile'], 30);
+    }
+
+    return [
+        'running' => true,
+        'startedAt' => $state['startedAt'] ?? null,
+        'logFile' => $state['logFile'] ?? null,
+        'progress' => $state['progress'] ?? null,
+        'logTail' => $logTail,
+    ];
+}
+
+if (php_sapi_name() === 'cli') {
+    foreach ($argv as $arg) {
+        if (str_starts_with($arg, '--run-sync=')) {
+            $uuid = substr($arg, 11);
+            $logFile = '';
+            foreach ($argv as $a) {
+                if (str_starts_with($a, '--log=')) {
+                    $logFile = substr($a, 6);
+                    break;
+                }
+            }
+            if ($uuid !== '' && $logFile !== '') {
+                runBackgroundSync($uuid, $logFile);
+            }
+            exit(0);
+        }
     }
 }
 
@@ -1220,6 +1379,9 @@ switch ($action) {
             jsonOut(['ok' => false, 'error' => 'Missing player uuid'], 400);
         }
         jsonOut(syncPlayer($uuid));
+
+    case 'getSyncStatus':
+        jsonOut(['ok' => true, 'status' => getSyncStatus()]);
 
     default:
         jsonOut(['ok' => false, 'error' => 'Unknown action'], 404);
