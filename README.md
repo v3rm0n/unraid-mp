@@ -2,7 +2,7 @@
 
 Unraid Media Player Sync plugin for managing FAT32 media players (for example Rockbox devices) from the Unraid web UI.
 
-![Plugin UI Screenshot](plugin-ui-screenshot.png)
+![Plugin UI Screenshot](screenshot.png)
 
 ## What it does
 
