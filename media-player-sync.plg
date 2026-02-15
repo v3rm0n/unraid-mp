@@ -2,12 +2,17 @@
 <!DOCTYPE PLUGIN [
 <!ENTITY name "media-player-sync">
 <!ENTITY author "v3rm0n">
-<!ENTITY version "0.1.5">
+<!ENTITY version "0.1.6">
 <!ENTITY launch "Settings/MediaPlayerSync">
 <!ENTITY pluginURL "https://raw.githubusercontent.com/v3rm0n/unraid-mp/main/media-player-sync.plg">
 ]>
 <PLUGIN name="&name;" author="&author;" version="&version;" pluginURL="&pluginURL;" launch="&launch;" icon="fa-music">
   <CHANGES>
+###0.1.6
+- Show sync errors (e.g., "No space left on device") in UI with toast notification
+- Store sync result for client to display detailed error messages
+- Add helper script to fix Rockbox device layout (move albums to Music/ subdirectory)
+
 ###0.1.5
 - Move plugin page to Settings -> User Utilities and launch via /Settings/MediaPlayerSync
 - Add persistent configured music shares and auto-load last share on open
