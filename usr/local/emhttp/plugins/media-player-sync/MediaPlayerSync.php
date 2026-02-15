@@ -46,6 +46,11 @@
               <input id="musicRoot" type="text" class="narrow" value="Music" maxlength="64">
               <input type="button" id="saveSettings" value="Save Selection">
             </dd>
+            <dt>Music Shares:</dt>
+            <dd>
+              <select id="musicSharesSelect" size="6" multiple class="mps-shares-config"></select>
+              <div class="mps-info">These shares are used every time this plugin opens.</div>
+            </dd>
           </dl>
 
           <div class="mps-grid">
@@ -102,7 +107,10 @@
   const apiBase = '/plugins/media-player-sync/api.php';
   const state = {
     players: [],
+    allShares: [],
+    musicShares: [],
     selected: [],
+    lastBrowseShare: '',
     currentShare: '',
     currentPath: '',
     folderCache: {},
@@ -115,6 +123,7 @@
   const playerSelect = document.getElementById('playerSelect');
   const playerInfo = document.getElementById('playerInfo');
   const playerManagedState = document.getElementById('playerManagedState');
+  const musicSharesSelect = document.getElementById('musicSharesSelect');
   const shareSelect = document.getElementById('shareSelect');
   const folderTree = document.getElementById('folderTree');
   const folderBreadcrumb = document.getElementById('folderBreadcrumb');
@@ -127,6 +136,47 @@
 
   function canonicalKey(share, folder) {
     return `${share}/${folder}`;
+  }
+
+  function getConfiguredShares() {
+    return state.musicShares.length > 0 ? state.musicShares : state.allShares;
+  }
+
+  function renderMusicSharesConfig() {
+    musicSharesSelect.innerHTML = '';
+    for (const share of state.allShares) {
+      const opt = document.createElement('option');
+      opt.value = share;
+      opt.textContent = share;
+      if (state.musicShares.includes(share)) {
+        opt.selected = true;
+      }
+      musicSharesSelect.appendChild(opt);
+    }
+  }
+
+  function renderBrowseShares() {
+    const configured = getConfiguredShares();
+    const previous = state.lastBrowseShare || shareSelect.value;
+    shareSelect.innerHTML = '';
+    for (const share of configured) {
+      const opt = document.createElement('option');
+      opt.value = share;
+      opt.textContent = share;
+      shareSelect.appendChild(opt);
+    }
+
+    if (configured.length === 0) {
+      state.currentShare = '';
+      return;
+    }
+
+    if (previous && configured.includes(previous)) {
+      shareSelect.value = previous;
+    } else {
+      shareSelect.selectedIndex = 0;
+    }
+    state.lastBrowseShare = shareSelect.value;
   }
 
   function resetStatusState() {
@@ -270,13 +320,9 @@
 
   async function loadShares() {
     const res = await api('listShares');
-    shareSelect.innerHTML = '';
-    for (const share of res.shares) {
-      const opt = document.createElement('option');
-      opt.value = share;
-      opt.textContent = share;
-      shareSelect.appendChild(opt);
-    }
+    state.allShares = Array.isArray(res.shares) ? res.shares : [];
+    renderMusicSharesConfig();
+    renderBrowseShares();
   }
 
   function renderSyncPreview(preview = null) {
@@ -356,6 +402,7 @@
       return;
     }
     state.currentShare = share;
+    state.lastBrowseShare = share;
     state.currentPath = '';
     state.folderCache = {};
     state.expandedFolders.clear();
@@ -637,21 +684,39 @@
   async function loadSettings() {
     const res = await api('getSettings');
     musicRoot.value = res.settings.musicRoot || 'Music';
+    const configuredShares = Array.isArray(res.settings.musicShares) ? res.settings.musicShares : [];
+    state.musicShares = configuredShares.filter((s) => state.allShares.includes(s));
+    state.lastBrowseShare = typeof res.settings.lastBrowseShare === 'string' ? res.settings.lastBrowseShare : '';
+    renderMusicSharesConfig();
+    renderBrowseShares();
     state.selected = Array.isArray(res.settings.selectedFolders) ? res.settings.selectedFolders : [];
     resetStatusState();
     renderSelected();
     await loadPlayers(res.settings.lastPlayerId || '');
     await loadSyncPreview();
+
+    if (shareSelect.value) {
+      await loadFolders();
+    }
   }
 
   async function saveSettings() {
+    const chosenShares = Array.from(musicSharesSelect.selectedOptions).map((o) => o.value);
+    state.musicShares = chosenShares;
+    renderBrowseShares();
+
     const payload = {
       musicRoot: musicRoot.value.trim() || 'Music',
+      musicShares: state.musicShares,
       selectedFolders: state.selected,
       lastPlayerId: playerSelect.value || '',
+      lastBrowseShare: shareSelect.value || '',
       csrf_token: csrf_token
     };
     await api('saveSettings', 'POST', buildPayloadForm(payload));
+    if (shareSelect.value) {
+      await loadFolders();
+    }
     await loadSyncPreview();
     await refreshCurrentFolderStatuses();
     showToast('Settings saved');
@@ -858,6 +923,12 @@
   });
   document.getElementById('toggleMount').addEventListener('click', toggleMount);
   document.getElementById('loadFolders').addEventListener('click', loadFolders);
+  shareSelect.addEventListener('change', () => {
+    state.lastBrowseShare = shareSelect.value || '';
+    if (shareSelect.value) {
+      loadFolders();
+    }
+  });
   document.getElementById('saveSettings').addEventListener('click', async () => {
     try {
       await saveSettings();

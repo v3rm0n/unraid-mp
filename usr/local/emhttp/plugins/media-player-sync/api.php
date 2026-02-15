@@ -112,15 +112,59 @@ function loadSettings(): array
 {
     $default = [
         'musicRoot' => 'Music',
+        'musicShares' => [],
         'selectedFolders' => [],
         'lastPlayerId' => '',
+        'lastBrowseShare' => '',
     ];
     $merged = array_merge($default, readJsonFile(settingsFile(), $default));
     if (($merged['lastPlayerId'] ?? '') === '' && isset($merged['lastPlayerUuid'])) {
         $merged['lastPlayerId'] = (string)$merged['lastPlayerUuid'];
     }
     unset($merged['lastPlayerUuid']);
+
+    if (!is_array($merged['musicShares'])) {
+        $merged['musicShares'] = [];
+    }
+    $shares = [];
+    foreach ($merged['musicShares'] as $share) {
+        if (!is_string($share)) {
+            continue;
+        }
+        if (!preg_match('/^[A-Za-z0-9._-]+$/', $share)) {
+            continue;
+        }
+        $shares[$share] = true;
+    }
+    $merged['musicShares'] = array_keys($shares);
+
+    $merged['lastBrowseShare'] = is_string($merged['lastBrowseShare']) ? $merged['lastBrowseShare'] : '';
     return $merged;
+}
+
+function configuredMusicShares(?array $settings = null): array
+{
+    $settings = $settings ?? loadSettings();
+    $configured = [];
+    foreach (($settings['musicShares'] ?? []) as $share) {
+        if (!is_string($share)) {
+            continue;
+        }
+        if (!preg_match('/^[A-Za-z0-9._-]+$/', $share)) {
+            continue;
+        }
+        $configured[$share] = true;
+    }
+    return array_keys($configured);
+}
+
+function isShareAllowed(string $share, ?array $settings = null): bool
+{
+    $configured = configuredMusicShares($settings);
+    if (count($configured) === 0) {
+        return true;
+    }
+    return in_array($share, $configured, true);
 }
 
 function isSafeRelativePath(string $path): bool
@@ -365,6 +409,9 @@ function listFolders(string $share, string $subPath = ''): array
     }
     $root = '/mnt/user/' . $share;
     if (!is_dir($root)) {
+        return [];
+    }
+    if (!isShareAllowed($share)) {
         return [];
     }
 
@@ -956,6 +1003,13 @@ function syncPlayer(string $uuid): array
     $settings = loadSettings();
     $musicRoot = normalizeMusicRoot((string)($settings['musicRoot'] ?? 'Music'));
     $selected = sanitizeSelectedFolders($settings['selectedFolders'] ?? []);
+    $configuredShares = configuredMusicShares($settings);
+    if (count($configuredShares) > 0) {
+        $allowed = array_fill_keys($configuredShares, true);
+        $selected = array_values(array_filter($selected, static function (array $entry) use ($allowed): bool {
+            return isset($allowed[$entry['share']]);
+        }));
+    }
 
     if (!is_array($selected) || count($selected) === 0) {
         return ['ok' => false, 'error' => 'No folders selected'];
@@ -1107,12 +1161,46 @@ switch ($action) {
         if (!isset($payload['selectedFolders']) || !is_array($payload['selectedFolders'])) {
             jsonOut(['ok' => false, 'error' => 'Invalid selected folders'], 400);
         }
+
+        $cleanMusicShares = [];
+        if (isset($payload['musicShares'])) {
+            if (!is_array($payload['musicShares'])) {
+                jsonOut(['ok' => false, 'error' => 'Invalid music shares'], 400);
+            }
+            foreach ($payload['musicShares'] as $share) {
+                if (!is_string($share)) {
+                    continue;
+                }
+                if (!preg_match('/^[A-Za-z0-9._-]+$/', $share)) {
+                    continue;
+                }
+                $cleanMusicShares[$share] = true;
+            }
+        }
+        $cleanMusicShares = array_keys($cleanMusicShares);
+
         $cleanSelected = sanitizeSelectedFolders($payload['selectedFolders']);
+        if (count($cleanMusicShares) > 0) {
+            $allowed = array_fill_keys($cleanMusicShares, true);
+            $cleanSelected = array_values(array_filter($cleanSelected, static function (array $entry) use ($allowed): bool {
+                return isset($allowed[$entry['share']]);
+            }));
+        }
+
+        $lastBrowseShare = (string)($payload['lastBrowseShare'] ?? '');
+        if ($lastBrowseShare !== '' && !preg_match('/^[A-Za-z0-9._-]+$/', $lastBrowseShare)) {
+            $lastBrowseShare = '';
+        }
+        if ($lastBrowseShare !== '' && count($cleanMusicShares) > 0 && !in_array($lastBrowseShare, $cleanMusicShares, true)) {
+            $lastBrowseShare = '';
+        }
 
         $settings = loadSettings();
         $settings['musicRoot'] = $musicRoot;
+        $settings['musicShares'] = $cleanMusicShares;
         $settings['selectedFolders'] = $cleanSelected;
         $settings['lastPlayerId'] = (string)($payload['lastPlayerId'] ?? ($settings['lastPlayerId'] ?? ''));
+        $settings['lastBrowseShare'] = $lastBrowseShare;
 
         if (!saveSettings($settings)) {
             jsonOut(['ok' => false, 'error' => 'Failed to save settings'], 500);

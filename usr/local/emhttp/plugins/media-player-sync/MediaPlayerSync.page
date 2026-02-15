@@ -1,5 +1,4 @@
-Menu="UserUtilities"
-Type="xmenu"
+Menu="Utilities"
 Title="Media Player Sync"
 Icon="fa-music"
 Tag="music"

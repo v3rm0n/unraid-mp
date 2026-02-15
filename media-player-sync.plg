@@ -2,12 +2,16 @@
 <!DOCTYPE PLUGIN [
 <!ENTITY name "media-player-sync">
 <!ENTITY author "v3rm0n">
-<!ENTITY version "0.1.4">
-<!ENTITY launch "UserUtilities/MediaPlayerSync">
+<!ENTITY version "0.1.5">
+<!ENTITY launch "Settings/MediaPlayerSync">
 <!ENTITY pluginURL "https://raw.githubusercontent.com/v3rm0n/unraid-mp/main/media-player-sync.plg">
 ]>
 <PLUGIN name="&name;" author="&author;" version="&version;" pluginURL="&pluginURL;" launch="&launch;">
   <CHANGES>
+###0.1.5
+- Move plugin page to Settings -> User Utilities and launch via /Settings/MediaPlayerSync
+- Add persistent configured music shares and auto-load last share on open
+
 ###0.1.4
 - Fix log directory permissions by moving logs to /tmp
 - Add logDir() function for proper log file handling
