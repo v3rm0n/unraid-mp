@@ -76,6 +76,10 @@
               <div class="mps-actions">
                 <input type="button" id="selectAllVisible" value="Select All" class="mps-btn mps-btn-neutral">
               </div>
+              <div id="addCandidatesBlock" class="mps-candidate-block mps-add-candidates" style="display: none;">
+                <div class="mps-candidate-title mps-add-title">Will add on sync</div>
+                <ul id="addCandidatesList" class="mps-candidate-list mps-add-list"></ul>
+              </div>
               <div id="removalCandidatesBlock" class="mps-removal-candidates" style="display: none;">
                 <div class="mps-removal-title">Will remove on sync (managed)</div>
                 <ul id="removalCandidatesList" class="mps-removal-list"></ul>
@@ -130,6 +134,7 @@
     expandedFolders: new Set(),
     syncStatus: {},
     selectedStatus: {},
+    addCandidates: [],
     removalCandidates: [],
     managed: null,
     syncPolling: null,
@@ -143,6 +148,8 @@
   const folderTree = document.getElementById('folderTree');
   const folderBreadcrumb = document.getElementById('folderBreadcrumb');
   const selectionSummary = document.getElementById('selectionSummary');
+  const addCandidatesBlock = document.getElementById('addCandidatesBlock');
+  const addCandidatesList = document.getElementById('addCandidatesList');
   const removalCandidatesBlock = document.getElementById('removalCandidatesBlock');
   const removalCandidatesList = document.getElementById('removalCandidatesList');
   const selectAllVisibleButton = document.getElementById('selectAllVisible');
@@ -222,6 +229,7 @@
   function resetStatusState() {
     state.syncStatus = {};
     state.selectedStatus = {};
+    state.addCandidates = [];
     state.removalCandidates = [];
     state.managed = null;
     updateFolderSyncIndicators();
@@ -262,6 +270,22 @@
     state.selected.sort((a, b) => `${a.share}/${a.folder}`.localeCompare(`${b.share}/${b.folder}`));
   }
 
+  function renderAddCandidates() {
+    const candidates = state.addCandidates || [];
+    addCandidatesList.innerHTML = '';
+    if (candidates.length === 0) {
+      addCandidatesBlock.style.display = 'none';
+      return;
+    }
+
+    for (const candidate of candidates) {
+      const item = document.createElement('li');
+      item.textContent = candidate.key;
+      addCandidatesList.appendChild(item);
+    }
+    addCandidatesBlock.style.display = '';
+  }
+
   function renderRemovalCandidates() {
     const candidates = state.removalCandidates || [];
     removalCandidatesList.innerHTML = '';
@@ -287,6 +311,7 @@
     } else {
       selectionSummary.textContent = `Selected: ${total}`;
     }
+    renderAddCandidates();
     renderRemovalCandidates();
   }
 
@@ -568,6 +593,7 @@
       for (const entry of json.selected || []) {
         state.selectedStatus[entry.key] = entry.state;
       }
+      state.addCandidates = json.addCandidates || [];
       state.removalCandidates = json.removeCandidates || [];
       renderSelectionSummary();
       renderSyncPreview(json);

@@ -852,6 +852,7 @@ function getSyncPreview(string $uuid, ?array $selectedOverride = null): array
 
     $selectedSet = [];
     $selectedOut = [];
+    $addCandidates = [];
     $counts = ['keep' => 0, 'add' => 0, 'remove' => 0, 'external' => 0];
 
     foreach ($selected as $entry) {
@@ -870,6 +871,13 @@ function getSyncPreview(string $uuid, ?array $selectedOverride = null): array
             'state' => $state,
             'onDevice' => $exists,
         ];
+        if ($state === 'add') {
+            $addCandidates[] = [
+                'key' => $key,
+                'share' => $share,
+                'folder' => $folder,
+            ];
+        }
     }
 
     $managedState = getManagedState($uuid, $mountpoint);
@@ -906,6 +914,7 @@ function getSyncPreview(string $uuid, ?array $selectedOverride = null): array
             'managedFolders' => count($managedState['folders']),
         ],
         'selected' => $selectedOut,
+        'addCandidates' => $addCandidates,
         'removeCandidates' => $removeCandidates,
     ];
 }
@@ -1201,13 +1210,17 @@ function doSyncPlayer(string $uuid): array
     }
 
     $copied = 0;
+    $removed = 0;
     $errors = [];
     $log = [];
     $currentManaged = [];
+    $syncJobs = [];
     $timestamp = date('Y-m-d H:i:s');
     $log[] = '[' . $timestamp . '] Starting sync';
 
     try {
+        $previousManaged = getManagedState($uuid, $mountpoint)['folders'];
+
         foreach ($selected as $entry) {
             $share = (string)$entry['share'];
             $folder = (string)$entry['folder'];
@@ -1220,7 +1233,44 @@ function doSyncPlayer(string $uuid): array
 
             $relativeDest = selectionKey($share, $folder);
             $currentManaged[$relativeDest] = true;
-            $dest = $destRoot . '/' . $relativeDest;
+            $syncJobs[] = [
+                'share' => $share,
+                'folder' => $folder,
+                'src' => $src,
+                'dest' => $destRoot . '/' . $relativeDest,
+            ];
+        }
+
+        $log[] = 'Cleanup phase: removing deselected managed folders before copy';
+        foreach ($previousManaged as $oldRelative) {
+            if (!is_string($oldRelative) || !isSafeRelativePath($oldRelative)) {
+                continue;
+            }
+            if (selectionSetOverlapsKey($currentManaged, $oldRelative)) {
+                continue;
+            }
+
+            $stalePath = $destRoot . '/' . $oldRelative;
+            if (!str_starts_with($stalePath, $destRoot . '/')) {
+                continue;
+            }
+            if (is_dir($stalePath)) {
+                $rm = run(sprintf('rm -rf %s', escapeshellarg($stalePath)));
+                $log[] = 'Removed unselected folder: ' . $oldRelative;
+                if ($rm['code'] === 0) {
+                    $removed++;
+                } else {
+                    $errors[] = 'Failed to remove: ' . $oldRelative;
+                }
+            }
+        }
+
+        foreach ($syncJobs as $job) {
+            $share = (string)$job['share'];
+            $folder = (string)$job['folder'];
+            $dest = (string)$job['dest'];
+            $src = (string)$job['src'];
+
             if (!is_dir($dest) && !mkdir($dest, 0775, true) && !is_dir($dest)) {
                 $errors[] = 'Could not create destination: ' . $dest;
                 continue;
@@ -1250,32 +1300,6 @@ function doSyncPlayer(string $uuid): array
                     $errors[] = 'rsync failed for ' . $share . '/' . $folder . ': ' . $rsyncError;
                 } else {
                     $errors[] = 'rsync failed for ' . $share . '/' . $folder;
-                }
-            }
-        }
-
-        $previousManaged = getManagedState($uuid, $mountpoint)['folders'];
-
-        $removed = 0;
-        foreach ($previousManaged as $oldRelative) {
-            if (!is_string($oldRelative) || !isSafeRelativePath($oldRelative)) {
-                continue;
-            }
-            if (selectionSetOverlapsKey($currentManaged, $oldRelative)) {
-                continue;
-            }
-
-            $stalePath = $destRoot . '/' . $oldRelative;
-            if (!str_starts_with($stalePath, $destRoot . '/')) {
-                continue;
-            }
-            if (is_dir($stalePath)) {
-                $rm = run(sprintf('rm -rf %s', escapeshellarg($stalePath)));
-                $log[] = 'Removed unselected folder: ' . $oldRelative;
-                if ($rm['code'] === 0) {
-                    $removed++;
-                } else {
-                    $errors[] = 'Failed to remove: ' . $oldRelative;
                 }
             }
         }
