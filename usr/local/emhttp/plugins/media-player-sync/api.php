@@ -762,6 +762,7 @@ function isProtectedDeviceRelativePath(string $relativePath): bool
         '.rockbox' => true,
         'iPod_Control' => true,
         'Contacts' => true,
+        'Calendars' => true,
         'Notes' => true,
         'System Volume Information' => true,
     ];
