@@ -919,6 +919,57 @@ function getSyncPreview(string $uuid, ?array $selectedOverride = null): array
     ];
 }
 
+function getPlayerSelectionBaseline(string $uuid): array
+{
+    $player = playerByUuid($uuid);
+    if ($player === null) {
+        return ['error' => 'Player not found'];
+    }
+
+    $mountpoint = (string)($player['mountpoint'] ?? '');
+    if ($mountpoint === '') {
+        return [
+            'managed' => false,
+            'selectedFolders' => [],
+        ];
+    }
+
+    $managedState = getManagedState($uuid, $mountpoint);
+    if (!$managedState['managed']) {
+        return [
+            'managed' => false,
+            'selectedFolders' => [],
+        ];
+    }
+
+    $selected = [];
+    $seen = [];
+    foreach ($managedState['folders'] as $key) {
+        $parts = splitSelectionKey($key);
+        if ($parts === null) {
+            continue;
+        }
+        $share = $parts['share'];
+        $folder = $parts['folder'];
+        if (!is_dir(destinationPath($mountpoint, $share, $folder))) {
+            continue;
+        }
+        $normalized = selectionKey($share, $folder);
+        if (isset($seen[$normalized])) {
+            continue;
+        }
+        $seen[$normalized] = true;
+        $selected[] = ['share' => $share, 'folder' => $folder];
+    }
+
+    usort($selected, fn($a, $b) => strcasecmp($a['share'] . '/' . $a['folder'], $b['share'] . '/' . $b['folder']));
+
+    return [
+        'managed' => true,
+        'selectedFolders' => $selected,
+    ];
+}
+
 function listImmediateDirectories(string $path): array
 {
     $entries = @scandir($path);
@@ -1181,11 +1232,13 @@ function releaseLock(): void
     }
 }
 
-function doSyncPlayer(string $uuid): array
+function doSyncPlayer(string $uuid, ?array $selectedOverride = null): array
 {
     ensureConfigDir();
     $settings = loadSettings();
-    $selected = sanitizeSelectedFolders($settings['selectedFolders'] ?? []);
+    $selected = $selectedOverride !== null
+        ? sanitizeSelectedFolders($selectedOverride)
+        : sanitizeSelectedFolders($settings['selectedFolders'] ?? []);
 
     if (!is_array($selected) || count($selected) === 0) {
         return ['ok' => false, 'error' => 'No folders selected'];
@@ -1324,7 +1377,7 @@ function doSyncPlayer(string $uuid): array
     }
 }
 
-function startBackgroundSync(string $uuid): array
+function startBackgroundSync(string $uuid, ?array $selectedOverride = null): array
 {
     $state = readSyncState();
     if ($state['running'] ?? false) {
@@ -1332,7 +1385,9 @@ function startBackgroundSync(string $uuid): array
     }
 
     $settings = loadSettings();
-    $selected = sanitizeSelectedFolders($settings['selectedFolders'] ?? []);
+    $selected = $selectedOverride !== null
+        ? sanitizeSelectedFolders($selectedOverride)
+        : sanitizeSelectedFolders($settings['selectedFolders'] ?? []);
 
     if (!is_array($selected) || count($selected) === 0) {
         return ['ok' => false, 'error' => 'No folders selected'];
@@ -1355,6 +1410,7 @@ function startBackgroundSync(string $uuid): array
         'startedAt' => date('c'),
         'logFile' => $logFile,
         'progress' => ['current' => 0, 'total' => count($selected), 'currentFolder' => ''],
+        'selectedFolders' => $selected,
     ]);
 
     $safeUuid = escapeshellarg($uuid);
@@ -1375,7 +1431,11 @@ function startBackgroundSync(string $uuid): array
 
 function runBackgroundSync(string $uuid, string $logFile): void
 {
-    $result = doSyncPlayer($uuid);
+    $state = readSyncState();
+    $selectedOverride = isset($state['selectedFolders']) && is_array($state['selectedFolders'])
+        ? $state['selectedFolders']
+        : null;
+    $result = doSyncPlayer($uuid, $selectedOverride);
 
     $log = [];
     if (is_file($logFile)) {
@@ -1407,9 +1467,9 @@ function runBackgroundSync(string $uuid, string $logFile): void
     ]);
 }
 
-function syncPlayer(string $uuid): array
+function syncPlayer(string $uuid, ?array $selectedOverride = null): array
 {
-    return startBackgroundSync($uuid);
+    return startBackgroundSync($uuid, $selectedOverride);
 }
 
 function getSyncStatus(): array
@@ -1483,17 +1543,35 @@ switch ($action) {
     case 'getSettings':
         jsonOut(['ok' => true, 'settings' => loadSettings()]);
 
+    case 'getPlayerSelectionBaseline':
+        $payload = readRequestPayload();
+        if (!is_array($payload)) {
+            jsonOut(['ok' => false, 'error' => 'Invalid JSON payload'], 400);
+        }
+        $uuid = (string)($payload['uuid'] ?? '');
+        if ($uuid === '') {
+            jsonOut(['ok' => false, 'error' => 'Missing player uuid'], 400);
+        }
+        $baseline = getPlayerSelectionBaseline($uuid);
+        if (isset($baseline['error'])) {
+            jsonOut(['ok' => false, 'error' => $baseline['error']], 404);
+        }
+        jsonOut(array_merge(['ok' => true], $baseline));
+
     case 'saveSettings':
         $payload = readRequestPayload();
         if (!is_array($payload)) {
             jsonOut(['ok' => false, 'error' => 'Invalid JSON payload'], 400);
         }
 
-        if (!isset($payload['selectedFolders']) || !is_array($payload['selectedFolders'])) {
-            jsonOut(['ok' => false, 'error' => 'Invalid selected folders'], 400);
+        $saveSelection = !isset($payload['saveSelection']) || (bool)$payload['saveSelection'];
+        $cleanSelected = null;
+        if ($saveSelection) {
+            if (!isset($payload['selectedFolders']) || !is_array($payload['selectedFolders'])) {
+                jsonOut(['ok' => false, 'error' => 'Invalid selected folders'], 400);
+            }
+            $cleanSelected = sanitizeSelectedFolders($payload['selectedFolders']);
         }
-
-        $cleanSelected = sanitizeSelectedFolders($payload['selectedFolders']);
 
         $lastBrowseShare = (string)($payload['lastBrowseShare'] ?? '');
         if ($lastBrowseShare !== '' && !preg_match('/^[A-Za-z0-9._-]+$/', $lastBrowseShare)) {
@@ -1505,7 +1583,9 @@ switch ($action) {
         }
 
         $settings = loadSettings();
-        $settings['selectedFolders'] = $cleanSelected;
+        if ($saveSelection && is_array($cleanSelected)) {
+            $settings['selectedFolders'] = $cleanSelected;
+        }
         $settings['lastPlayerId'] = (string)($payload['lastPlayerId'] ?? ($settings['lastPlayerId'] ?? ''));
         $settings['lastBrowseShare'] = $lastBrowseShare;
 
@@ -1596,11 +1676,18 @@ switch ($action) {
         jsonOut(adoptLibrary($uuid));
 
     case 'sync':
-        $uuid = (string)($_POST['uuid'] ?? '');
+        $payload = readRequestPayload();
+        if (!is_array($payload)) {
+            $payload = [];
+        }
+        $uuid = (string)($payload['uuid'] ?? ($_POST['uuid'] ?? ''));
         if ($uuid === '') {
             jsonOut(['ok' => false, 'error' => 'Missing player uuid'], 400);
         }
-        jsonOut(syncPlayer($uuid));
+        $selectedOverride = isset($payload['selectedFolders']) && is_array($payload['selectedFolders'])
+            ? $payload['selectedFolders']
+            : null;
+        jsonOut(syncPlayer($uuid, $selectedOverride));
 
     case 'getSyncStatus':
         jsonOut(['ok' => true, 'status' => getSyncStatus()]);

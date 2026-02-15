@@ -343,11 +343,34 @@
     }
     selectionSaveTimer = setTimeout(async () => {
       try {
-        await saveSettings({ silent: true, skipFolderReload: true });
+        await saveSettings({ silent: true, skipFolderReload: true, persistSelection: false });
       } catch (err) {
         showToast(`Save failed: ${err.message}`, false);
       }
     }, 180);
+  }
+
+  async function loadPlayerSelectionBaseline(silent = true) {
+    const id = playerSelect.value;
+    if (!id) {
+      return;
+    }
+
+    try {
+      const baseline = await api('getPlayerSelectionBaseline', 'POST', buildPayloadForm({
+        uuid: id,
+        csrf_token: csrf_token
+      }));
+
+      state.selected = Array.isArray(baseline.selectedFolders) ? baseline.selectedFolders : [];
+      normalizeSelectedFolders();
+      sortSelectedFolders();
+      renderSelectionSummary();
+    } catch (err) {
+      if (!silent) {
+        showToast(`Failed to load baseline selection: ${err.message}`, false);
+      }
+    }
   }
 
   function queuePreviewRefresh() {
@@ -960,7 +983,6 @@
         updateFolderSyncIndicators();
         updateSelectAllButtonLabel();
         queuePreviewRefresh();
-        queueSelectionSave();
       });
     });
   }
@@ -988,6 +1010,7 @@
     resetStatusState();
     renderSelectionSummary();
     await loadPlayers(res.settings.lastPlayerId || '');
+    await loadPlayerSelectionBaseline();
     await loadSyncPreview();
 
     if (shareSelect.value) {
@@ -998,10 +1021,12 @@
   async function saveSettings(options = {}) {
     const silent = !!options.silent;
     const skipFolderReload = !!options.skipFolderReload;
+    const persistSelection = options.persistSelection !== false;
     const payload = {
-      selectedFolders: state.selected,
+      selectedFolders: persistSelection ? state.selected : [],
       lastPlayerId: playerSelect.value || '',
       lastBrowseShare: shareSelect.value || '',
+      saveSelection: persistSelection,
       csrf_token: csrf_token
     };
     await api('saveSettings', 'POST', buildPayloadForm(payload));
@@ -1157,6 +1182,7 @@
       }
     }
     await loadPlayers(id);
+    await loadPlayerSelectionBaseline();
     state.syncStatus = {};
     await loadSyncPreview();
     await refreshCurrentFolderStatuses();
@@ -1194,6 +1220,7 @@
         if (success && errors.length === 0) {
           syncLog.textContent = 'Sync completed successfully. Refreshing status...';
           showToast('Sync complete');
+          await saveSettings({ silent: true, skipFolderReload: true, persistSelection: true });
         } else if (success && errors.length > 0) {
           const errorText = errors.join('\n');
           syncLog.textContent = 'Sync completed with warnings:\n' + errorText;
@@ -1220,8 +1247,6 @@
   }
 
   async function syncNow() {
-    await saveSettings({ silent: true });
-
     const id = playerSelect.value;
     if (!id) {
       showToast('Select a player first', false);
@@ -1231,9 +1256,11 @@
     setSyncing(true);
     syncLog.textContent = 'Starting sync...';
 
-    const data = new URLSearchParams();
-    data.append('uuid', id);
-    data.append('csrf_token', csrf_token);
+    const data = buildPayloadForm({
+      uuid: id,
+      selectedFolders: state.selected,
+      csrf_token: csrf_token
+    });
 
     try {
       const json = await api('sync', 'POST', data);
@@ -1249,6 +1276,7 @@
 
   document.getElementById('refreshPlayers').addEventListener('click', async () => {
     await loadPlayers(playerSelect.value);
+    await loadPlayerSelectionBaseline();
     await loadSyncPreview();
     await refreshCurrentFolderStatuses();
   });
@@ -1264,6 +1292,7 @@
   document.getElementById('startSync').addEventListener('click', syncNow);
   document.getElementById('adoptLibrary').addEventListener('click', adoptLibrary);
   playerSelect.addEventListener('change', async () => {
+    await loadPlayerSelectionBaseline();
     state.syncStatus = {};
     state.selectedStatus = {};
     state.managed = null;
@@ -1292,7 +1321,6 @@
     updateFolderSyncIndicators();
     updateSelectAllButtonLabel();
     queuePreviewRefresh();
-    queueSelectionSave();
   });
 
   (async function init() {
