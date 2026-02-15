@@ -622,28 +622,56 @@ function selectionSetOverlapsKey(array $selectionSet, string $key): bool
     return false;
 }
 
-function getManagedState(string $mountpoint): array
+function isArrayListCompat(array $value): bool
 {
-    if ($mountpoint === '' || !is_dir($mountpoint)) {
-        return ['managed' => false, 'folders' => []];
+    return function_exists('array_is_list')
+        ? array_is_list($value)
+        : (count($value) === 0 || array_keys($value) === range(0, count($value) - 1));
+}
+
+function managedFileForPlayer(string $playerId): string
+{
+    $safeId = preg_replace('/[^A-Za-z0-9._-]/', '-', $playerId);
+    if (!is_string($safeId) || $safeId === '') {
+        $safeId = 'unknown';
+    }
+    return configDir() . '/managed-' . $safeId . '.json';
+}
+
+function legacyManagedFileForMountpoint(string $mountpoint): string
+{
+    return rtrim($mountpoint, '/') . '/.media-player-sync-managed.json';
+}
+
+function parseManagedFolderKeys($raw): ?array
+{
+    if (!is_array($raw)) {
+        return null;
     }
 
-    $file = managedFileForPlayer($mountpoint);
-    if (!is_file($file)) {
-        return ['managed' => false, 'folders' => []];
-    }
-
-    $raw = readJsonFile($file, []);
-    $folderKeys = [];
-
-    $isList = is_array($raw)
-        && (function_exists('array_is_list')
-            ? array_is_list($raw)
-            : (count($raw) === 0 || array_keys($raw) === range(0, count($raw) - 1)));
-    if ($isList) {
+    $folderKeys = null;
+    if (isArrayListCompat($raw)) {
         $folderKeys = $raw;
-    } elseif (is_array($raw) && isset($raw['folders']) && is_array($raw['folders'])) {
-        $folderKeys = $raw['folders'];
+    } elseif (isset($raw['folders']) && is_array($raw['folders'])) {
+        $folders = $raw['folders'];
+        if (isArrayListCompat($folders)) {
+            $folderKeys = $folders;
+        } else {
+            $folderKeys = [];
+            foreach ($folders as $key => $enabled) {
+                if (!is_string($key)) {
+                    continue;
+                }
+                if ($enabled === false || $enabled === 0 || $enabled === '0' || $enabled === null) {
+                    continue;
+                }
+                $folderKeys[] = $key;
+            }
+        }
+    }
+
+    if ($folderKeys === null) {
+        return null;
     }
 
     $clean = [];
@@ -659,13 +687,44 @@ function getManagedState(string $mountpoint): array
         $clean[$normalized] = true;
     }
 
-    return ['managed' => true, 'folders' => array_keys($clean)];
+    return array_keys($clean);
 }
 
-function saveManagedState(string $mountpoint, array $folderKeys): void
+function getManagedState(string $playerId, string $mountpoint): array
 {
-    if ($mountpoint === '' || !is_dir($mountpoint)) {
-        return;
+    if ($playerId === '') {
+        return ['managed' => false, 'folders' => []];
+    }
+
+    $files = [managedFileForPlayer($playerId)];
+    if ($mountpoint !== '' && is_dir($mountpoint)) {
+        $files[] = legacyManagedFileForMountpoint($mountpoint);
+    }
+
+    foreach ($files as $file) {
+        if (!is_file($file)) {
+            continue;
+        }
+        $raw = @file_get_contents($file);
+        if (!is_string($raw) || trim($raw) === '') {
+            continue;
+        }
+        $decoded = json_decode($raw, true);
+        $parsed = parseManagedFolderKeys($decoded);
+        if ($parsed === null) {
+            continue;
+        }
+
+        return ['managed' => true, 'folders' => $parsed];
+    }
+
+    return ['managed' => false, 'folders' => []];
+}
+
+function saveManagedState(string $playerId, array $folderKeys): bool
+{
+    if ($playerId === '') {
+        return false;
     }
 
     $clean = [];
@@ -687,7 +746,21 @@ function saveManagedState(string $mountpoint, array $folderKeys): void
         'updatedAt' => date('c'),
         'folders' => array_keys($clean),
     ];
-    @file_put_contents(managedFileForPlayer($mountpoint), json_encode($payload, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES) . PHP_EOL);
+
+    ensureConfigDir();
+    $target = managedFileForPlayer($playerId);
+    $tmp = $target . '.tmp';
+    $json = json_encode($payload, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES) . PHP_EOL;
+
+    if (@file_put_contents($tmp, $json) === false) {
+        return false;
+    }
+    if (!@rename($tmp, $target)) {
+        @unlink($tmp);
+        return false;
+    }
+
+    return true;
 }
 
 function buildSelectionSet(array $selected): array
@@ -727,7 +800,7 @@ function checkFoldersSyncStatus(
 
     $settings = loadSettings();
     $selectedSet = buildSelectionSet($selectedOverride ?? ($settings['selectedFolders'] ?? []));
-    $managedState = getManagedState($mountpoint);
+    $managedState = getManagedState($uuid, $mountpoint);
     $managedSet = array_fill_keys($managedState['folders'], true);
 
     $statuses = [];
@@ -799,7 +872,7 @@ function getSyncPreview(string $uuid, ?array $selectedOverride = null): array
         ];
     }
 
-    $managedState = getManagedState($mountpoint);
+    $managedState = getManagedState($uuid, $mountpoint);
     $removeCandidates = [];
     if ($managedState['managed']) {
         foreach ($managedState['folders'] as $managedKey) {
@@ -982,7 +1055,7 @@ function getAdoptPreview(string $uuid): array
     }
 
     return [
-        'managed' => (bool)getManagedState($mountpoint)['managed'],
+        'managed' => (bool)getManagedState($uuid, $mountpoint)['managed'],
         'summary' => [
             'deleteFiles' => count($plan['deleteFiles']),
             'deleteDirs' => count($plan['deleteDirs']),
@@ -1046,7 +1119,9 @@ function adoptLibrary(string $uuid): array
         foreach ($selected as $entry) {
             $keys[] = selectionKey($entry['share'], $entry['folder']);
         }
-        saveManagedState($mountpoint, $keys);
+        if (!saveManagedState($uuid, $keys)) {
+            $errors[] = 'Failed to save managed state after adoption';
+        }
 
         $settings['selectedFolders'] = $selected;
         $settings['lastPlayerId'] = $uuid;
@@ -1078,11 +1153,6 @@ function adoptLibrary(string $uuid): array
     } finally {
         releaseLock();
     }
-}
-
-function managedFileForPlayer(string $mountpoint): string
-{
-    return rtrim($mountpoint, '/') . '/.media-player-sync-managed.json';
 }
 
 function acquireLock(): bool
@@ -1184,7 +1254,7 @@ function doSyncPlayer(string $uuid): array
             }
         }
 
-        $previousManaged = getManagedState($mountpoint)['folders'];
+        $previousManaged = getManagedState($uuid, $mountpoint)['folders'];
 
         $removed = 0;
         foreach ($previousManaged as $oldRelative) {
@@ -1210,7 +1280,9 @@ function doSyncPlayer(string $uuid): array
             }
         }
 
-        saveManagedState($mountpoint, array_keys($currentManaged));
+        if (!saveManagedState($uuid, array_keys($currentManaged))) {
+            $errors[] = 'Failed to save managed state';
+        }
 
         $logPath = logDir() . '/sync-' . date('Ymd-His') . '.log';
         @file_put_contents($logPath, implode(PHP_EOL, $log) . PHP_EOL);
