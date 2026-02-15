@@ -111,8 +111,6 @@ function saveSettings(array $settings): bool
 function loadSettings(): array
 {
     $default = [
-        'musicRoot' => 'Music',
-        'musicShares' => [],
         'selectedFolders' => [],
         'lastPlayerId' => '',
         'lastBrowseShare' => '',
@@ -123,48 +121,8 @@ function loadSettings(): array
     }
     unset($merged['lastPlayerUuid']);
 
-    if (!is_array($merged['musicShares'])) {
-        $merged['musicShares'] = [];
-    }
-    $shares = [];
-    foreach ($merged['musicShares'] as $share) {
-        if (!is_string($share)) {
-            continue;
-        }
-        if (!preg_match('/^[A-Za-z0-9._-]+$/', $share)) {
-            continue;
-        }
-        $shares[$share] = true;
-    }
-    $merged['musicShares'] = array_keys($shares);
-
     $merged['lastBrowseShare'] = is_string($merged['lastBrowseShare']) ? $merged['lastBrowseShare'] : '';
     return $merged;
-}
-
-function configuredMusicShares(?array $settings = null): array
-{
-    $settings = $settings ?? loadSettings();
-    $configured = [];
-    foreach (($settings['musicShares'] ?? []) as $share) {
-        if (!is_string($share)) {
-            continue;
-        }
-        if (!preg_match('/^[A-Za-z0-9._-]+$/', $share)) {
-            continue;
-        }
-        $configured[$share] = true;
-    }
-    return array_keys($configured);
-}
-
-function isShareAllowed(string $share, ?array $settings = null): bool
-{
-    $configured = configuredMusicShares($settings);
-    if (count($configured) === 0) {
-        return true;
-    }
-    return in_array($share, $configured, true);
 }
 
 function isSafeRelativePath(string $path): bool
@@ -411,9 +369,6 @@ function listFolders(string $share, string $subPath = ''): array
     if (!is_dir($root)) {
         return [];
     }
-    if (!isShareAllowed($share)) {
-        return [];
-    }
 
     $currentPath = $root;
     if ($subPath !== '') {
@@ -478,12 +433,6 @@ function hasSubdirectories(string $path): bool
         }
     }
     return false;
-}
-
-function normalizeMusicRoot(?string $value): string
-{
-    $musicRoot = trim((string)$value, '/');
-    return $musicRoot === '' ? 'Music' : $musicRoot;
 }
 
 function sanitizeSelectedFolders($selected): array
@@ -608,17 +557,16 @@ function buildSelectionSet(array $selected): array
     return $set;
 }
 
-function destinationPath(string $mountpoint, string $musicRoot, string $share, string $folder): string
+function destinationPath(string $mountpoint, string $share, string $folder): string
 {
-    return rtrim($mountpoint, '/') . '/' . normalizeMusicRoot($musicRoot) . '/' . selectionKey($share, $folder);
+    return rtrim($mountpoint, '/') . '/' . selectionKey($share, $folder);
 }
 
 function checkFoldersSyncStatus(
     string $uuid,
     string $share,
     array $folders,
-    ?array $selectedOverride = null,
-    ?string $musicRootOverride = null
+    ?array $selectedOverride = null
 ): array
 {
     $player = playerByUuid($uuid);
@@ -636,7 +584,6 @@ function checkFoldersSyncStatus(
     }
 
     $settings = loadSettings();
-    $musicRoot = normalizeMusicRoot($musicRootOverride ?? (string)($settings['musicRoot'] ?? 'Music'));
     $selectedSet = buildSelectionSet($selectedOverride ?? ($settings['selectedFolders'] ?? []));
     $managedState = getManagedState($uuid);
     $managedSet = array_fill_keys($managedState['folders'], true);
@@ -648,7 +595,7 @@ function checkFoldersSyncStatus(
         }
 
         $key = selectionKey($share, $folder);
-        $exists = is_dir(destinationPath($mountpoint, $musicRoot, $share, $folder));
+        $exists = is_dir(destinationPath($mountpoint, $share, $folder));
         $isSelected = isset($selectedSet[$key]);
         $isManaged = isset($managedSet[$key]);
 
@@ -671,7 +618,7 @@ function checkFoldersSyncStatus(
     ];
 }
 
-function getSyncPreview(string $uuid, ?array $selectedOverride = null, ?string $musicRootOverride = null): array
+function getSyncPreview(string $uuid, ?array $selectedOverride = null): array
 {
     $player = playerByUuid($uuid);
     if ($player === null) {
@@ -685,7 +632,6 @@ function getSyncPreview(string $uuid, ?array $selectedOverride = null, ?string $
 
     $settings = loadSettings();
     $selected = $selectedOverride ?? ($settings['selectedFolders'] ?? []);
-    $musicRoot = normalizeMusicRoot($musicRootOverride ?? (string)($settings['musicRoot'] ?? 'Music'));
     $selected = sanitizeSelectedFolders($selected);
 
     $selectedSet = [];
@@ -698,7 +644,7 @@ function getSyncPreview(string $uuid, ?array $selectedOverride = null, ?string $
         $key = selectionKey($share, $folder);
         $selectedSet[$key] = true;
 
-        $exists = is_dir(destinationPath($mountpoint, $musicRoot, $share, $folder));
+        $exists = is_dir(destinationPath($mountpoint, $share, $folder));
         $state = $exists ? 'keep' : 'add';
         $counts[$state]++;
         $selectedOut[] = [
@@ -721,7 +667,7 @@ function getSyncPreview(string $uuid, ?array $selectedOverride = null, ?string $
             if ($parts === null) {
                 continue;
             }
-            $exists = is_dir(destinationPath($mountpoint, $musicRoot, $parts['share'], $parts['folder']));
+            $exists = is_dir(destinationPath($mountpoint, $parts['share'], $parts['folder']));
             if (!$exists) {
                 continue;
             }
@@ -736,7 +682,6 @@ function getSyncPreview(string $uuid, ?array $selectedOverride = null, ?string $
 
     return [
         'managed' => (bool)$managedState['managed'],
-        'musicRoot' => $musicRoot,
         'summary' => [
             'keep' => $counts['keep'],
             'add' => $counts['add'],
@@ -806,9 +751,9 @@ function collectAdoptedSelections(string $destRoot): array
     return $selected;
 }
 
-function buildAdoptionPlan(string $mountpoint, string $musicRoot): array
+function buildAdoptionPlan(string $mountpoint): array
 {
-    $destRoot = rtrim($mountpoint, '/') . '/' . normalizeMusicRoot($musicRoot);
+    $destRoot = rtrim($mountpoint, '/');
     $deleteFiles = [];
     $deleteDirs = [];
 
@@ -848,7 +793,7 @@ function buildAdoptionPlan(string $mountpoint, string $musicRoot): array
     ];
 }
 
-function getAdoptPreview(string $uuid, ?string $musicRootOverride = null): array
+function getAdoptPreview(string $uuid): array
 {
     $player = playerByUuid($uuid);
     if ($player === null) {
@@ -860,9 +805,7 @@ function getAdoptPreview(string $uuid, ?string $musicRootOverride = null): array
         return ['error' => 'Player not mounted'];
     }
 
-    $settings = loadSettings();
-    $musicRoot = normalizeMusicRoot($musicRootOverride ?? (string)($settings['musicRoot'] ?? 'Music'));
-    $plan = buildAdoptionPlan($mountpoint, $musicRoot);
+    $plan = buildAdoptionPlan($mountpoint);
 
     $sampleDeletes = [];
     foreach (array_slice($plan['deleteFiles'], 0, 8) as $path) {
@@ -874,7 +817,6 @@ function getAdoptPreview(string $uuid, ?string $musicRootOverride = null): array
 
     return [
         'managed' => (bool)getManagedState($uuid)['managed'],
-        'musicRoot' => $musicRoot,
         'summary' => [
             'deleteFiles' => count($plan['deleteFiles']),
             'deleteDirs' => count($plan['deleteDirs']),
@@ -885,7 +827,7 @@ function getAdoptPreview(string $uuid, ?string $musicRootOverride = null): array
     ];
 }
 
-function adoptLibrary(string $uuid, ?string $musicRootOverride = null): array
+function adoptLibrary(string $uuid): array
 {
     $player = playerByUuid($uuid);
     if ($player === null) {
@@ -898,8 +840,7 @@ function adoptLibrary(string $uuid, ?string $musicRootOverride = null): array
     }
 
     $settings = loadSettings();
-    $musicRoot = normalizeMusicRoot($musicRootOverride ?? (string)($settings['musicRoot'] ?? 'Music'));
-    $plan = buildAdoptionPlan($mountpoint, $musicRoot);
+    $plan = buildAdoptionPlan($mountpoint);
 
     if (!acquireLock()) {
         return ['ok' => false, 'error' => 'Another sync is currently running'];
@@ -941,7 +882,6 @@ function adoptLibrary(string $uuid, ?string $musicRootOverride = null): array
         }
         saveManagedState($uuid, $keys);
 
-        $settings['musicRoot'] = $musicRoot;
         $settings['selectedFolders'] = $selected;
         $settings['lastPlayerId'] = $uuid;
         if (!saveSettings($settings)) {
@@ -1001,15 +941,7 @@ function syncPlayer(string $uuid): array
 {
     ensureConfigDir();
     $settings = loadSettings();
-    $musicRoot = normalizeMusicRoot((string)($settings['musicRoot'] ?? 'Music'));
     $selected = sanitizeSelectedFolders($settings['selectedFolders'] ?? []);
-    $configuredShares = configuredMusicShares($settings);
-    if (count($configuredShares) > 0) {
-        $allowed = array_fill_keys($configuredShares, true);
-        $selected = array_values(array_filter($selected, static function (array $entry) use ($allowed): bool {
-            return isset($allowed[$entry['share']]);
-        }));
-    }
 
     if (!is_array($selected) || count($selected) === 0) {
         return ['ok' => false, 'error' => 'No folders selected'];
@@ -1024,7 +956,7 @@ function syncPlayer(string $uuid): array
         return ['ok' => false, 'error' => 'Player must be mounted before sync'];
     }
 
-    $destRoot = rtrim($mountpoint, '/') . '/' . $musicRoot;
+    $destRoot = rtrim($mountpoint, '/');
     if (!is_dir($destRoot) && !mkdir($destRoot, 0775, true) && !is_dir($destRoot)) {
         return ['ok' => false, 'error' => 'Failed to create destination root'];
     }
@@ -1153,51 +1085,22 @@ switch ($action) {
             jsonOut(['ok' => false, 'error' => 'Invalid JSON payload'], 400);
         }
 
-        $musicRoot = trim((string)($payload['musicRoot'] ?? 'Music'));
-        if (!preg_match('/^[A-Za-z0-9._\/-]+$/', $musicRoot)) {
-            jsonOut(['ok' => false, 'error' => 'Invalid music root'], 400);
-        }
-
         if (!isset($payload['selectedFolders']) || !is_array($payload['selectedFolders'])) {
             jsonOut(['ok' => false, 'error' => 'Invalid selected folders'], 400);
         }
 
-        $cleanMusicShares = [];
-        if (isset($payload['musicShares'])) {
-            if (!is_array($payload['musicShares'])) {
-                jsonOut(['ok' => false, 'error' => 'Invalid music shares'], 400);
-            }
-            foreach ($payload['musicShares'] as $share) {
-                if (!is_string($share)) {
-                    continue;
-                }
-                if (!preg_match('/^[A-Za-z0-9._-]+$/', $share)) {
-                    continue;
-                }
-                $cleanMusicShares[$share] = true;
-            }
-        }
-        $cleanMusicShares = array_keys($cleanMusicShares);
-
         $cleanSelected = sanitizeSelectedFolders($payload['selectedFolders']);
-        if (count($cleanMusicShares) > 0) {
-            $allowed = array_fill_keys($cleanMusicShares, true);
-            $cleanSelected = array_values(array_filter($cleanSelected, static function (array $entry) use ($allowed): bool {
-                return isset($allowed[$entry['share']]);
-            }));
-        }
 
         $lastBrowseShare = (string)($payload['lastBrowseShare'] ?? '');
         if ($lastBrowseShare !== '' && !preg_match('/^[A-Za-z0-9._-]+$/', $lastBrowseShare)) {
             $lastBrowseShare = '';
         }
-        if ($lastBrowseShare !== '' && count($cleanMusicShares) > 0 && !in_array($lastBrowseShare, $cleanMusicShares, true)) {
+        $allShares = listShares();
+        if ($lastBrowseShare !== '' && !in_array($lastBrowseShare, $allShares, true)) {
             $lastBrowseShare = '';
         }
 
         $settings = loadSettings();
-        $settings['musicRoot'] = $musicRoot;
-        $settings['musicShares'] = $cleanMusicShares;
         $settings['selectedFolders'] = $cleanSelected;
         $settings['lastPlayerId'] = (string)($payload['lastPlayerId'] ?? ($settings['lastPlayerId'] ?? ''));
         $settings['lastBrowseShare'] = $lastBrowseShare;
@@ -1219,7 +1122,6 @@ switch ($action) {
         $selectedOverride = isset($payload['selectedFolders']) && is_array($payload['selectedFolders'])
             ? $payload['selectedFolders']
             : null;
-        $musicRootOverride = isset($payload['musicRoot']) ? (string)$payload['musicRoot'] : null;
 
         if ($uuid === '') {
             jsonOut(['ok' => false, 'error' => 'Missing player uuid'], 400);
@@ -1228,7 +1130,7 @@ switch ($action) {
             jsonOut(['ok' => false, 'error' => 'Missing share'], 400);
         }
 
-        $result = checkFoldersSyncStatus($uuid, $share, $folders, $selectedOverride, $musicRootOverride);
+        $result = checkFoldersSyncStatus($uuid, $share, $folders, $selectedOverride);
         if (isset($result['error'])) {
             jsonOut(['ok' => false, 'error' => $result['error'], 'statuses' => $result['statuses'] ?? []]);
         }
@@ -1256,9 +1158,8 @@ switch ($action) {
         $selectedOverride = isset($payload['selectedFolders']) && is_array($payload['selectedFolders'])
             ? $payload['selectedFolders']
             : null;
-        $musicRootOverride = isset($payload['musicRoot']) ? (string)$payload['musicRoot'] : null;
 
-        $preview = getSyncPreview($uuid, $selectedOverride, $musicRootOverride);
+        $preview = getSyncPreview($uuid, $selectedOverride);
         if (isset($preview['error'])) {
             jsonOut(['ok' => false, 'error' => $preview['error']], 400);
         }
@@ -1273,9 +1174,7 @@ switch ($action) {
         if ($uuid === '') {
             jsonOut(['ok' => false, 'error' => 'Missing player uuid'], 400);
         }
-        $musicRootOverride = isset($payload['musicRoot']) ? (string)$payload['musicRoot'] : null;
-
-        $preview = getAdoptPreview($uuid, $musicRootOverride);
+        $preview = getAdoptPreview($uuid);
         if (isset($preview['error'])) {
             jsonOut(['ok' => false, 'error' => $preview['error']], 400);
         }
@@ -1290,8 +1189,7 @@ switch ($action) {
         if ($uuid === '') {
             jsonOut(['ok' => false, 'error' => 'Missing player uuid'], 400);
         }
-        $musicRootOverride = isset($payload['musicRoot']) ? (string)$payload['musicRoot'] : null;
-        jsonOut(adoptLibrary($uuid, $musicRootOverride));
+        jsonOut(adoptLibrary($uuid));
 
     case 'sync':
         $uuid = (string)($_POST['uuid'] ?? '');

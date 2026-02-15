@@ -32,27 +32,14 @@
     <thead>
       <tr>
         <th>
-          <strong><em>Source Selection</em></strong>
-          <span class="mps-head-note">Select share folders to sync to the player.</span>
+          <strong><em>Music Selection</em></strong>
+          <span class="mps-head-note">Choose source shares and folders to sync.</span>
         </th>
       </tr>
     </thead>
     <tbody>
       <tr>
         <td>
-          <dl>
-            <dt>Device Music Root:</dt>
-            <dd>
-              <input id="musicRoot" type="text" class="narrow" value="Music" maxlength="64">
-              <input type="button" id="saveSettings" value="Save Selection">
-            </dd>
-            <dt>Music Shares:</dt>
-            <dd>
-              <select id="musicSharesSelect" size="6" multiple class="mps-shares-config"></select>
-              <div class="mps-info">These shares are used every time this plugin opens.</div>
-            </dd>
-          </dl>
-
           <div class="mps-grid">
             <div>
               <div class="mps-col-title">Shares</div>
@@ -73,6 +60,10 @@
               <select id="selectedList" size="10" multiple></select>
               <div class="mps-actions"><input type="button" id="removeSelection" value="Remove Selected"></div>
             </div>
+          </div>
+
+          <div class="mps-actions mps-settings-actions">
+            <input type="button" id="saveSettings" value="Save">
           </div>
         </td>
       </tr>
@@ -107,8 +98,6 @@
   const apiBase = '/plugins/media-player-sync/api.php';
   const state = {
     players: [],
-    allShares: [],
-    musicShares: [],
     selected: [],
     lastBrowseShare: '',
     currentShare: '',
@@ -123,14 +112,12 @@
   const playerSelect = document.getElementById('playerSelect');
   const playerInfo = document.getElementById('playerInfo');
   const playerManagedState = document.getElementById('playerManagedState');
-  const musicSharesSelect = document.getElementById('musicSharesSelect');
   const shareSelect = document.getElementById('shareSelect');
   const folderTree = document.getElementById('folderTree');
   const folderBreadcrumb = document.getElementById('folderBreadcrumb');
   const selectedList = document.getElementById('selectedList');
   const syncLog = document.getElementById('syncLog');
   const toast = document.getElementById('toast');
-  const musicRoot = document.getElementById('musicRoot');
   const syncPreview = document.getElementById('syncPreview');
   const adoptLibraryButton = document.getElementById('adoptLibrary');
 
@@ -138,40 +125,22 @@
     return `${share}/${folder}`;
   }
 
-  function getConfiguredShares() {
-    return state.musicShares.length > 0 ? state.musicShares : state.allShares;
-  }
-
-  function renderMusicSharesConfig() {
-    musicSharesSelect.innerHTML = '';
-    for (const share of state.allShares) {
-      const opt = document.createElement('option');
-      opt.value = share;
-      opt.textContent = share;
-      if (state.musicShares.includes(share)) {
-        opt.selected = true;
-      }
-      musicSharesSelect.appendChild(opt);
-    }
-  }
-
-  function renderBrowseShares() {
-    const configured = getConfiguredShares();
+  function renderBrowseShares(shares) {
     const previous = state.lastBrowseShare || shareSelect.value;
     shareSelect.innerHTML = '';
-    for (const share of configured) {
+    for (const share of shares) {
       const opt = document.createElement('option');
       opt.value = share;
       opt.textContent = share;
       shareSelect.appendChild(opt);
     }
 
-    if (configured.length === 0) {
+    if (shares.length === 0) {
       state.currentShare = '';
       return;
     }
 
-    if (previous && configured.includes(previous)) {
+    if (previous && shares.includes(previous)) {
       shareSelect.value = previous;
     } else {
       shareSelect.selectedIndex = 0;
@@ -320,9 +289,8 @@
 
   async function loadShares() {
     const res = await api('listShares');
-    state.allShares = Array.isArray(res.shares) ? res.shares : [];
-    renderMusicSharesConfig();
-    renderBrowseShares();
+    const shares = Array.isArray(res.shares) ? res.shares : [];
+    renderBrowseShares(shares);
   }
 
   function renderSyncPreview(preview = null) {
@@ -365,7 +333,6 @@
     try {
       const payload = {
         uuid: playerId,
-        musicRoot: musicRoot.value.trim() || 'Music',
         selectedFolders: state.selected,
         csrf_token: csrf_token
       };
@@ -451,7 +418,6 @@
         uuid: playerId,
         share: share,
         folders: folderPaths,
-        musicRoot: musicRoot.value.trim() || 'Music',
         selectedFolders: state.selected,
         csrf_token: csrf_token
       };
@@ -683,12 +649,7 @@
 
   async function loadSettings() {
     const res = await api('getSettings');
-    musicRoot.value = res.settings.musicRoot || 'Music';
-    const configuredShares = Array.isArray(res.settings.musicShares) ? res.settings.musicShares : [];
-    state.musicShares = configuredShares.filter((s) => state.allShares.includes(s));
     state.lastBrowseShare = typeof res.settings.lastBrowseShare === 'string' ? res.settings.lastBrowseShare : '';
-    renderMusicSharesConfig();
-    renderBrowseShares();
     state.selected = Array.isArray(res.settings.selectedFolders) ? res.settings.selectedFolders : [];
     resetStatusState();
     renderSelected();
@@ -701,13 +662,7 @@
   }
 
   async function saveSettings() {
-    const chosenShares = Array.from(musicSharesSelect.selectedOptions).map((o) => o.value);
-    state.musicShares = chosenShares;
-    renderBrowseShares();
-
     const payload = {
-      musicRoot: musicRoot.value.trim() || 'Music',
-      musicShares: state.musicShares,
       selectedFolders: state.selected,
       lastPlayerId: playerSelect.value || '',
       lastBrowseShare: shareSelect.value || '',
@@ -754,12 +709,10 @@
       return;
     }
 
-    const musicRootValue = musicRoot.value.trim() || 'Music';
     let preview;
     try {
       preview = await api('getAdoptPreview', 'POST', buildPayloadForm({
         uuid: id,
-        musicRoot: musicRootValue,
         csrf_token: csrf_token
       }));
     } catch (err) {
@@ -785,7 +738,6 @@
     try {
       result = await api('adoptLibrary', 'POST', buildPayloadForm({
         uuid: id,
-        musicRoot: musicRootValue,
         csrf_token: csrf_token
       }), '', 0);
     } catch (err) {
@@ -811,7 +763,6 @@
 
     if (result.settings && Array.isArray(result.settings.selectedFolders)) {
       state.selected = result.settings.selectedFolders;
-      musicRoot.value = result.settings.musicRoot || musicRootValue;
       renderSelected();
     }
 
@@ -945,11 +896,6 @@
     updateFolderSyncIndicators();
     renderSelected();
     updatePlayerInfo();
-    await loadSyncPreview();
-    await refreshCurrentFolderStatuses();
-  });
-
-  musicRoot.addEventListener('change', async () => {
     await loadSyncPreview();
     await refreshCurrentFolderStatuses();
   });
