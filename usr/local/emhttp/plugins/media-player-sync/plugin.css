@@ -255,39 +255,54 @@
 }
 
 .mps-folder-row.synced .mps-folder-label::after {
-  content: "✓";
+  content: "✓ ON DEVICE";
   margin-left: 8px;
-  color: #2d8f45;
-  font-weight: bold;
-  font-size: 12px;
+  padding: 1px 6px;
+  background: #2d8f45;
+  color: #fff;
+  font-weight: 600;
+  font-size: 10px;
+  border-radius: 3px;
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
 }
 
 .mps-folder-row.synced {
-  background: #f0f8f0;
+  background: #e8f5e9;
 }
 
 .mps-folder-row.status-add .mps-folder-label::after {
-  content: "+";
+  content: "+ TO ADD";
   margin-left: 8px;
-  color: #1766aa;
-  font-weight: bold;
-  font-size: 12px;
+  padding: 1px 6px;
+  background: #1766aa;
+  color: #fff;
+  font-weight: 600;
+  font-size: 10px;
+  border-radius: 3px;
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
 }
 
 .mps-folder-row.status-add {
-  background: #eef6fc;
+  background: #e3f2fd;
 }
 
 .mps-folder-row.status-remove .mps-folder-label::after {
-  content: "−";
+  content: "− TO REMOVE";
   margin-left: 8px;
-  color: #a12a2a;
-  font-weight: bold;
-  font-size: 12px;
+  padding: 1px 6px;
+  background: #a12a2a;
+  color: #fff;
+  font-weight: 600;
+  font-size: 10px;
+  border-radius: 3px;
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
 }
 
 .mps-folder-row.status-remove {
-  background: #fdf0f0;
+  background: #ffebee;
 }
 
 .mps-folder-row.status-external .mps-folder-label::after {
@@ -296,4 +311,27 @@
   color: #777;
   font-weight: bold;
   font-size: 13px;
+}
+
+#selectedList option {
+  padding: 3px 6px;
+  font-family: inherit;
+}
+
+#selectedList option.selected-status-keep {
+  background: #e8f5e9;
+  color: #1b5e20;
+  font-weight: 500;
+}
+
+#selectedList option.selected-status-add {
+  background: #e3f2fd;
+  color: #0d47a1;
+  font-weight: 500;
+}
+
+#selectedList option.selected-status-remove {
+  background: #ffebee;
+  color: #b71c1c;
+  font-weight: 500;
 }

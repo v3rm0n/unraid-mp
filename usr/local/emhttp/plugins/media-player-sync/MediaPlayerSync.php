@@ -295,8 +295,20 @@
       opt.value = `${s.share}:${s.folder}`;
       const key = canonicalKey(s.share, s.folder);
       const status = state.selectedStatus[key];
-      const suffix = status === 'keep' ? ' [On device]' : status === 'add' ? ' [Will add]' : '';
-      opt.textContent = `${s.share}/${s.folder}${suffix}`;
+      let badgeClass = 'selected-status-none';
+      let badgeText = '';
+      if (status === 'keep') {
+        badgeClass = 'selected-status-keep';
+        badgeText = '✓ On device';
+      } else if (status === 'add') {
+        badgeClass = 'selected-status-add';
+        badgeText = '+ To add';
+      } else if (status === 'remove') {
+        badgeClass = 'selected-status-remove';
+        badgeText = '− Will remove';
+      }
+      opt.className = badgeClass;
+      opt.textContent = badgeText ? `${s.share}/${s.folder}   ${badgeText}` : `${s.share}/${s.folder}`;
       selectedList.appendChild(opt);
     }
   }
