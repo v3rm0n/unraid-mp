@@ -74,6 +74,19 @@
   color: #324c67;
 }
 
+#removalCandidatesBlock {
+  border-color: #e5c8c8;
+  background: #fff6f6;
+}
+
+#removalCandidatesBlock .mps-candidate-title {
+  color: #7d1f1f;
+}
+
+#removalCandidatesBlock .mps-candidate-list {
+  color: #6a2222;
+}
+
 .mps-candidate-list li {
   margin: 1px 0;
   word-break: break-word;
