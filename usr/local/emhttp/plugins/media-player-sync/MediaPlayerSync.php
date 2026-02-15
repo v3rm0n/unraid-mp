@@ -1,6 +1,17 @@
 <link rel="stylesheet" href="/plugins/media-player-sync/plugin.css">
 
 <div class="mps-wrap">
+  <div class="mps-card mps-how">
+    <div class="mps-how-title">How It Works</div>
+    <ol class="mps-how-list">
+      <li>Mount a FAT32 player so the plugin can read and write folder content.</li>
+      <li>Choose one or more source shares, browse folders, and add them to the sync selection.</li>
+      <li>Sync preview compares selected folders against the device and shows what is already present, missing, or removable.</li>
+      <li>Sync copies only missing files with rsync and removes deselected folders only when they are plugin-managed.</li>
+      <li>Adopt Existing aligns the device with /mnt/user content and converts the player into managed mode.</li>
+    </ol>
+  </div>
+
   <table class="tablesorter mps-panel">
     <thead>
       <tr>
@@ -23,16 +34,6 @@
           </dl>
           <div id="playerInfo" class="mps-info"></div>
           <div id="playerManagedState" class="mps-managed-state"></div>
-          <div class="mps-card mps-how">
-            <div class="mps-how-title">How It Works</div>
-            <ol class="mps-how-list">
-              <li>Mount a FAT32 player so the plugin can read and write folder content.</li>
-              <li>Choose one or more source shares, browse folders, and add them to the sync selection.</li>
-              <li>Sync preview compares selected folders against the device and shows what is already present, missing, or removable.</li>
-              <li>Sync copies only missing files with rsync and removes deselected folders only when they are plugin-managed.</li>
-              <li>Adopt Existing aligns the device with /mnt/user content and converts the player into managed mode.</li>
-            </ol>
-          </div>
         </td>
       </tr>
     </tbody>
