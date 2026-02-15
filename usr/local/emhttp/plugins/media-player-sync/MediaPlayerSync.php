@@ -76,10 +76,6 @@
               <div class="mps-actions">
                 <input type="button" id="selectAllVisible" value="Select All" class="mps-btn mps-btn-neutral">
               </div>
-              <div class="mps-selected-block">
-                <div class="mps-selected-title">Selected Paths</div>
-                <ul id="selectedPathsList" class="mps-selected-list"></ul>
-              </div>
               <div id="removalCandidatesBlock" class="mps-removal-candidates" style="display: none;">
                 <div class="mps-removal-title">Will remove on sync (managed)</div>
                 <ul id="removalCandidatesList" class="mps-removal-list"></ul>
@@ -149,7 +145,6 @@
   const selectionSummary = document.getElementById('selectionSummary');
   const removalCandidatesBlock = document.getElementById('removalCandidatesBlock');
   const removalCandidatesList = document.getElementById('removalCandidatesList');
-  const selectedPathsList = document.getElementById('selectedPathsList');
   const selectAllVisibleButton = document.getElementById('selectAllVisible');
   const syncLog = document.getElementById('syncLog');
   const toast = document.getElementById('toast');
@@ -158,6 +153,7 @@
   const syncIndicator = document.getElementById('syncIndicator');
   const startSyncButton = document.getElementById('startSync');
   let selectionSaveTimer = null;
+  let previewRefreshTimer = null;
 
   function canonicalKey(share, folder) {
     return `${share}/${folder}`;
@@ -291,25 +287,7 @@
     } else {
       selectionSummary.textContent = `Selected: ${total}`;
     }
-    renderSelectedPaths();
     renderRemovalCandidates();
-  }
-
-  function renderSelectedPaths() {
-    selectedPathsList.innerHTML = '';
-    if (state.selected.length === 0) {
-      const item = document.createElement('li');
-      item.className = 'mps-selected-empty';
-      item.textContent = 'No folders selected.';
-      selectedPathsList.appendChild(item);
-      return;
-    }
-
-    for (const entry of state.selected) {
-      const item = document.createElement('li');
-      item.textContent = `${entry.share}/${entry.folder}`;
-      selectedPathsList.appendChild(item);
-    }
   }
 
   function updateSelectAllButtonLabel() {
@@ -335,6 +313,19 @@
         showToast(`Save failed: ${err.message}`, false);
       }
     }, 180);
+  }
+
+  function queuePreviewRefresh() {
+    if (previewRefreshTimer) {
+      clearTimeout(previewRefreshTimer);
+    }
+    previewRefreshTimer = setTimeout(async () => {
+      try {
+        await loadSyncPreview(true);
+        await refreshCurrentFolderStatuses(true);
+      } catch (err) {
+      }
+    }, 80);
   }
 
   function updateAdoptVisibility() {
@@ -923,6 +914,7 @@
         renderSelectionSummary();
         updateFolderSyncIndicators();
         updateSelectAllButtonLabel();
+        queuePreviewRefresh();
         queueSelectionSave();
       });
     });
@@ -1245,6 +1237,7 @@
     renderSelectionSummary();
     updateFolderSyncIndicators();
     updateSelectAllButtonLabel();
+    queuePreviewRefresh();
     queueSelectionSave();
   });
 

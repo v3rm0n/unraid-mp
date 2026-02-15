@@ -51,40 +51,6 @@
   margin-top: 8px;
 }
 
-.mps-selected-block {
-  margin-top: 8px;
-  border: 1px solid #d7dce1;
-  background: #f8fafc;
-  border-radius: 4px;
-  padding: 8px;
-}
-
-.mps-selected-title {
-  font-weight: 600;
-  font-size: 12px;
-  color: #2b3a4a;
-  margin-bottom: 4px;
-}
-
-.mps-selected-list {
-  margin: 0;
-  padding-left: 18px;
-  max-height: 120px;
-  overflow-y: auto;
-  color: #394f66;
-}
-
-.mps-selected-list li {
-  margin: 1px 0;
-  word-break: break-word;
-}
-
-.mps-selected-empty {
-  list-style: none;
-  margin-left: -18px;
-  color: #66788a;
-}
-
 .mps-removal-candidates {
   margin-top: 8px;
   border: 1px solid #e5c8c8;
