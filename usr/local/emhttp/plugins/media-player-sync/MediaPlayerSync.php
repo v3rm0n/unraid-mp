@@ -30,7 +30,7 @@
               <li>Choose one or more source shares, browse folders, add them to the sync selection, then save.</li>
               <li>Sync preview compares selected folders against the device and shows what is already present, missing, or removable.</li>
               <li>Sync copies only missing files with rsync and removes deselected folders only when they are plugin-managed.</li>
-              <li>Adopt From Unraid aligns the device with /mnt/user content and converts the player into managed mode.</li>
+              <li>Adopt Existing aligns the device with /mnt/user content and converts the player into managed mode.</li>
             </ol>
           </div>
         </td>
@@ -94,7 +94,7 @@
         <td>
           <div id="syncPreview" class="mps-card mps-sync-preview"></div>
           <div class="mps-status-legend">Status: On device (keep) | Missing (add) | Managed only (remove)</div>
-          <input type="button" id="adoptLibrary" value="Adopt From Unraid" class="mps-btn mps-btn-danger">
+          <input type="button" id="adoptLibrary" value="Adopt Existing" class="mps-btn mps-btn-danger">
           <input type="button" id="startSync" value="Sync Now" class="mps-btn mps-btn-primary">
           <pre id="syncLog"></pre>
         </td>
@@ -166,6 +166,15 @@
     updateFolderSyncIndicators();
     renderSelected();
     renderSyncPreview();
+    updateAdoptVisibility();
+  }
+
+  function updateAdoptVisibility() {
+    const id = playerSelect.value;
+    const player = state.players.find((p) => p.id === id);
+    const visible = !!player && player.mounted && state.managed === false;
+    adoptLibraryButton.style.display = visible ? '' : 'none';
+    adoptLibraryButton.disabled = !visible;
   }
 
   function showToast(message, ok = true) {
@@ -355,11 +364,13 @@
       }
       renderSelected();
       renderSyncPreview(json);
+      updateAdoptVisibility();
     } catch (err) {
       if (!silent) {
         showToast(`Sync preview failed: ${err.message}`, false);
       }
       syncPreview.textContent = `Preview unavailable: ${err.message}`;
+      updateAdoptVisibility();
     }
   }
 
@@ -441,6 +452,7 @@
         });
         updateFolderSyncIndicators();
         updatePlayerInfo();
+        updateAdoptVisibility();
       }
     } catch (err) {
       if (!silent) {
@@ -698,16 +710,16 @@
     if (!player) {
       btn.value = 'Mount';
       btn.disabled = true;
-      adoptLibraryButton.disabled = true;
+      updateAdoptVisibility();
       return;
     }
     btn.disabled = false;
-    adoptLibraryButton.disabled = !player.mounted;
     if (player.mounted) {
       btn.value = 'Unmount';
     } else {
       btn.value = 'Mount';
     }
+    updateAdoptVisibility();
   }
 
   async function adoptLibrary() {
@@ -736,7 +748,7 @@
 
     const summary = preview.summary || {};
     const msg = [
-      'Adopt from Unraid will delete unmatched content on the player.',
+      'Adopt existing will delete unmatched content on the player.',
       `Files to delete: ${summary.deleteFiles || 0}`,
       `Directories to delete: ${summary.deleteDirs || 0}`,
       `Folder roots to manage: ${summary.adoptFolders || 0}`,
