@@ -21,7 +21,7 @@
 .mps-grid {
   margin-top: 14px;
   display: grid;
-  grid-template-columns: repeat(3, minmax(200px, 1fr));
+  grid-template-columns: minmax(220px, 0.9fr) minmax(340px, 1.8fr);
   gap: 10px;
 }
 
@@ -30,12 +30,53 @@
   margin-bottom: 6px;
 }
 
+.mps-folder-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.mps-selection-summary {
+  font-size: 12px;
+  color: #666;
+  font-weight: 500;
+}
+
 .mps-grid select {
   width: 100%;
 }
 
 .mps-actions {
   margin-top: 8px;
+}
+
+.mps-removal-candidates {
+  margin-top: 8px;
+  border: 1px solid #e5c8c8;
+  background: #fff6f6;
+  border-radius: 4px;
+  padding: 8px;
+}
+
+.mps-removal-title {
+  font-weight: 600;
+  font-size: 12px;
+  color: #7d1f1f;
+  margin-bottom: 4px;
+}
+
+.mps-removal-list {
+  margin: 0;
+  padding-left: 18px;
+  max-height: 120px;
+  overflow-y: auto;
+  color: #6a2222;
+}
+
+.mps-removal-list li {
+  margin: 1px 0;
+  word-break: break-word;
 }
 
 .mps-btn {
@@ -311,29 +352,6 @@
   color: #777;
   font-weight: bold;
   font-size: 13px;
-}
-
-#selectedList option {
-  padding: 3px 6px;
-  font-family: inherit;
-}
-
-#selectedList option.selected-status-keep {
-  background: #e8f5e9;
-  color: #1b5e20;
-  font-weight: 500;
-}
-
-#selectedList option.selected-status-add {
-  background: #e3f2fd;
-  color: #0d47a1;
-  font-weight: 500;
-}
-
-#selectedList option.selected-status-remove {
-  background: #ffebee;
-  color: #b71c1c;
-  font-weight: 500;
 }
 
 .mps-sync-indicator {

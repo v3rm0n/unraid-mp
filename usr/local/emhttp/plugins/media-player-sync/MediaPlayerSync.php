@@ -67,18 +67,19 @@
               <div class="mps-info">Selecting a share automatically loads folders.</div>
             </div>
             <div>
-              <div class="mps-col-title">Folders In Share</div>
+              <div class="mps-col-title mps-folder-head">
+                <span>Folders In Share</span>
+                <span id="selectionSummary" class="mps-selection-summary"></span>
+              </div>
               <div class="mps-breadcrumb" id="folderBreadcrumb"></div>
               <div id="folderTree" class="mps-folder-tree"></div>
               <div class="mps-actions">
-                <input type="button" id="addSelection" value="Add Selected" class="mps-btn mps-btn-primary">
-                <input type="button" id="selectAllVisible" value="Select All Visible" class="mps-btn mps-btn-neutral">
+                <input type="button" id="selectAllVisible" value="Select All" class="mps-btn mps-btn-neutral">
               </div>
-            </div>
-            <div>
-              <div class="mps-col-title">Selected For Sync</div>
-              <select id="selectedList" size="10" multiple></select>
-              <div class="mps-actions"><input type="button" id="removeSelection" value="Remove Selected" class="mps-btn mps-btn-neutral"></div>
+              <div id="removalCandidatesBlock" class="mps-removal-candidates" style="display: none;">
+                <div class="mps-removal-title">Will remove on sync (managed)</div>
+                <ul id="removalCandidatesList" class="mps-removal-list"></ul>
+              </div>
             </div>
           </div>
 
@@ -141,13 +142,17 @@
   const shareSelect = document.getElementById('shareSelect');
   const folderTree = document.getElementById('folderTree');
   const folderBreadcrumb = document.getElementById('folderBreadcrumb');
-  const selectedList = document.getElementById('selectedList');
+  const selectionSummary = document.getElementById('selectionSummary');
+  const removalCandidatesBlock = document.getElementById('removalCandidatesBlock');
+  const removalCandidatesList = document.getElementById('removalCandidatesList');
+  const selectAllVisibleButton = document.getElementById('selectAllVisible');
   const syncLog = document.getElementById('syncLog');
   const toast = document.getElementById('toast');
   const syncPreview = document.getElementById('syncPreview');
   const adoptLibraryButton = document.getElementById('adoptLibrary');
   const syncIndicator = document.getElementById('syncIndicator');
   const startSyncButton = document.getElementById('startSync');
+  let selectionSaveTimer = null;
 
   function canonicalKey(share, folder) {
     return `${share}/${folder}`;
@@ -182,9 +187,79 @@
     state.removalCandidates = [];
     state.managed = null;
     updateFolderSyncIndicators();
-    renderSelected();
+    renderSelectionSummary();
     renderSyncPreview();
     updateAdoptVisibility();
+  }
+
+  function isFolderSelected(share, folder) {
+    return state.selected.some((entry) => entry.share === share && entry.folder === folder);
+  }
+
+  function setFolderSelected(share, folder, selected) {
+    const index = state.selected.findIndex((entry) => entry.share === share && entry.folder === folder);
+    if (selected && index === -1) {
+      state.selected.push({ share, folder });
+    } else if (!selected && index !== -1) {
+      state.selected.splice(index, 1);
+    }
+  }
+
+  function sortSelectedFolders() {
+    state.selected.sort((a, b) => `${a.share}/${a.folder}`.localeCompare(`${b.share}/${b.folder}`));
+  }
+
+  function renderRemovalCandidates() {
+    const candidates = state.removalCandidates || [];
+    removalCandidatesList.innerHTML = '';
+    if (candidates.length === 0) {
+      removalCandidatesBlock.style.display = 'none';
+      return;
+    }
+
+    for (const candidate of candidates) {
+      const item = document.createElement('li');
+      item.textContent = candidate.key;
+      removalCandidatesList.appendChild(item);
+    }
+    removalCandidatesBlock.style.display = '';
+  }
+
+  function renderSelectionSummary() {
+    const total = state.selected.length;
+    const share = state.currentShare || shareSelect.value || '';
+    const inShare = share ? state.selected.filter((entry) => entry.share === share).length : 0;
+    if (share) {
+      selectionSummary.textContent = `Selected: ${inShare} in this share (${total} total)`;
+    } else {
+      selectionSummary.textContent = `Selected: ${total}`;
+    }
+    renderRemovalCandidates();
+  }
+
+  function updateSelectAllButtonLabel() {
+    const checkboxes = folderTree.querySelectorAll('input[type="checkbox"]');
+    if (checkboxes.length === 0) {
+      selectAllVisibleButton.value = 'Select All';
+      selectAllVisibleButton.disabled = true;
+      return;
+    }
+    selectAllVisibleButton.disabled = false;
+    const allChecked = Array.from(checkboxes).every((checkbox) => checkbox.checked);
+    selectAllVisibleButton.value = allChecked ? 'Deselect All' : 'Select All';
+  }
+
+  function queueSelectionSave() {
+    if (selectionSaveTimer) {
+      clearTimeout(selectionSaveTimer);
+    }
+    selectionSaveTimer = setTimeout(async () => {
+      try {
+        await saveSettings({ silent: true, skipFolderReload: true });
+      } catch (err) {
+        showToast(`Save failed: ${err.message}`, false);
+      }
+    }, 180);
   }
 
   function updateAdoptVisibility() {
@@ -366,41 +441,6 @@
     return value.toFixed(2) + ' ' + units[unitIndex];
   }
 
-  function renderSelected() {
-    selectedList.innerHTML = '';
-    for (const s of state.selected) {
-      const opt = document.createElement('option');
-      opt.value = `${s.share}:${s.folder}`;
-      const key = canonicalKey(s.share, s.folder);
-      const status = state.selectedStatus[key];
-      let badgeClass = 'selected-status-none';
-      let badgeText = '';
-      if (status === 'keep') {
-        badgeClass = 'selected-status-keep';
-        badgeText = '✓ On device';
-      } else if (status === 'add') {
-        badgeClass = 'selected-status-add';
-        badgeText = '+ To add';
-      } else if (status === 'remove') {
-        badgeClass = 'selected-status-remove';
-        badgeText = '− Will remove';
-      }
-      opt.className = badgeClass;
-      opt.textContent = badgeText ? `${s.share}/${s.folder}   ${badgeText}` : `${s.share}/${s.folder}`;
-      selectedList.appendChild(opt);
-    }
-
-    // Show removal candidates (previously managed folders that will be removed)
-    for (const rc of state.removalCandidates || []) {
-      const opt = document.createElement('option');
-      opt.value = rc.key;
-      opt.className = 'selected-status-remove';
-      opt.textContent = `${rc.key}   − Will remove`;
-      opt.disabled = true;
-      selectedList.appendChild(opt);
-    }
-  }
-
   async function loadPlayers(lastId = '') {
     const res = await api('listPlayers');
     state.players = res.players;
@@ -463,7 +503,7 @@
         state.selectedStatus[entry.key] = entry.state;
       }
       state.removalCandidates = json.removeCandidates || [];
-      renderSelected();
+      renderSelectionSummary();
       renderSyncPreview(json);
       updateAdoptVisibility();
     } catch (err) {
@@ -628,7 +668,8 @@
         html += `<span class="mps-folder-spacer"></span>`;
       }
       
-      html += `<label class="mps-folder-label"><input type="checkbox" value="${folder.relative}"> ${escapeHtml(folder.name)}</label>`;
+      const checked = isFolderSelected(state.currentShare, folder.relative) ? ' checked' : '';
+      html += `<label class="mps-folder-label"><input type="checkbox" value="${folder.relative}"${checked}> ${escapeHtml(folder.name)}</label>`;
       row.innerHTML = html;
       container.appendChild(row);
       
@@ -644,6 +685,7 @@
     
     folderTree.appendChild(container);
     attachFolderListeners(container);
+    updateSelectAllButtonLabel();
   }
 
   function renderSubfolderList(container, parentPath) {
@@ -665,7 +707,8 @@
         html += `<span class="mps-folder-spacer"></span>`;
       }
       
-      html += `<label class="mps-folder-label"><input type="checkbox" value="${folder.relative}"> ${escapeHtml(folder.name)}</label>`;
+      const checked = isFolderSelected(state.currentShare, folder.relative) ? ' checked' : '';
+      html += `<label class="mps-folder-label"><input type="checkbox" value="${folder.relative}"${checked}> ${escapeHtml(folder.name)}</label>`;
       row.innerHTML = html;
       container.appendChild(row);
       
@@ -712,7 +755,8 @@
         html += `<span class="mps-folder-spacer"></span>`;
       }
       
-      html += `<label class="mps-folder-label"><input type="checkbox" value="${folder.relative}"> ${escapeHtml(folder.name)}</label>`;
+      const checked = isFolderSelected(state.currentShare, folder.relative) ? ' checked' : '';
+      html += `<label class="mps-folder-label"><input type="checkbox" value="${folder.relative}"${checked}> ${escapeHtml(folder.name)}</label>`;
       row.innerHTML = html;
       childContainer.appendChild(row);
       
@@ -727,6 +771,7 @@
     
     container.appendChild(childContainer);
     attachFolderListeners(childContainer);
+    updateSelectAllButtonLabel();
     
     // Check sync status for newly loaded subfolders
     checkSyncStatusForFolders(folders);
@@ -763,6 +808,20 @@
         }
       });
     });
+
+    container.querySelectorAll('input[type="checkbox"]').forEach((checkbox) => {
+      checkbox.addEventListener('change', () => {
+        const share = state.currentShare || shareSelect.value;
+        if (!share) {
+          return;
+        }
+        setFolderSelected(share, checkbox.value, checkbox.checked);
+        sortSelectedFolders();
+        renderSelectionSummary();
+        updateSelectAllButtonLabel();
+        queueSelectionSave();
+      });
+    });
   }
 
   function escapeHtml(text) {
@@ -775,8 +834,9 @@
     const res = await api('getSettings');
     state.lastBrowseShare = typeof res.settings.lastBrowseShare === 'string' ? res.settings.lastBrowseShare : '';
     state.selected = Array.isArray(res.settings.selectedFolders) ? res.settings.selectedFolders : [];
+    sortSelectedFolders();
     resetStatusState();
-    renderSelected();
+    renderSelectionSummary();
     await loadPlayers(res.settings.lastPlayerId || '');
     await loadSyncPreview();
 
@@ -787,6 +847,7 @@
 
   async function saveSettings(options = {}) {
     const silent = !!options.silent;
+    const skipFolderReload = !!options.skipFolderReload;
     const payload = {
       selectedFolders: state.selected,
       lastPlayerId: playerSelect.value || '',
@@ -794,7 +855,7 @@
       csrf_token: csrf_token
     };
     await api('saveSettings', 'POST', buildPayloadForm(payload));
-    if (shareSelect.value) {
+    if (shareSelect.value && !skipFolderReload) {
       await loadFolders();
     }
     await loadSyncPreview();
@@ -890,7 +951,8 @@
 
     if (result.settings && Array.isArray(result.settings.selectedFolders)) {
       state.selected = result.settings.selectedFolders;
-      renderSelected();
+      sortSelectedFolders();
+      renderSelectionSummary();
     }
 
     await loadPlayers(id);
@@ -1055,46 +1117,27 @@
     state.selectedStatus = {};
     state.managed = null;
     updateFolderSyncIndicators();
-    renderSelected();
+    renderSelectionSummary();
     updatePlayerInfo();
     await loadSyncPreview();
     await refreshCurrentFolderStatuses();
   });
 
-  document.getElementById('addSelection').addEventListener('click', async () => {
-    const share = state.currentShare || shareSelect.value;
-    const checked = folderTree.querySelectorAll('input[type="checkbox"]:checked');
-    if (!share || checked.length === 0) {
-      showToast('Pick share and folder(s)', false);
-      return;
-    }
-
-    const existing = new Set(state.selected.map((x) => `${x.share}:${x.folder}`));
-    for (const cb of checked) {
-      const folder = cb.value;
-      const key = `${share}:${folder}`;
-      if (!existing.has(key)) {
-        state.selected.push({ share, folder });
-        existing.add(key);
-      }
-    }
-    state.selected.sort((a, b) => `${a.share}/${a.folder}`.localeCompare(`${b.share}/${b.folder}`));
-    renderSelected();
-    await saveSettings({ silent: true });
-    showToast(`Added ${checked.length} folder(s)`);
-  });
-
   document.getElementById('selectAllVisible').addEventListener('click', () => {
     const checkboxes = folderTree.querySelectorAll('input[type="checkbox"]');
-    const allChecked = Array.from(checkboxes).every(cb => cb.checked);
-    checkboxes.forEach(cb => cb.checked = !allChecked);
-  });
-
-  document.getElementById('removeSelection').addEventListener('click', async () => {
-    const removed = new Set(Array.from(selectedList.selectedOptions).map((o) => o.value));
-    state.selected = state.selected.filter((x) => !removed.has(`${x.share}:${x.folder}`));
-    renderSelected();
-    await saveSettings({ silent: true });
+    const share = state.currentShare || shareSelect.value;
+    if (!share || checkboxes.length === 0) {
+      return;
+    }
+    const allChecked = Array.from(checkboxes).every((checkbox) => checkbox.checked);
+    checkboxes.forEach((checkbox) => {
+      checkbox.checked = !allChecked;
+      setFolderSelected(share, checkbox.value, checkbox.checked);
+    });
+    sortSelectedFolders();
+    renderSelectionSummary();
+    updateSelectAllButtonLabel();
+    queueSelectionSave();
   });
 
   (async function init() {
