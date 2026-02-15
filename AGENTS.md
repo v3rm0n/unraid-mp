@@ -94,6 +94,22 @@ Then open:
 
 `/Settings/MediaPlayerSync`
 
+## Server deployment
+
+To deploy changes to the production Unraid server (nixnas):
+
+```bash
+ssh nixnas
+cd ~/unraid-mp
+git pull
+./install-local.sh
+```
+
+This updates the plugin files on the server and makes changes live.
+
+Access the Unraid Web UI at: https://nixnas.bearded-stork.ts.net
+Plugin settings page: https://nixnas.bearded-stork.ts.net/Settings/MediaPlayerSync
+
 Helpful quick checks:
 
 ```bash

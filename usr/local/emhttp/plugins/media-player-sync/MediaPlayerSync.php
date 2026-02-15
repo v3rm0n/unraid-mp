@@ -890,11 +890,26 @@
           state.syncPolling = null;
         }
 
-        syncLog.textContent = 'Sync completed. Refreshing status...';
+        const result = status.result || {};
+        const errors = result.errors || [];
+        const success = result.ok === true;
+
+        if (success && errors.length === 0) {
+          syncLog.textContent = 'Sync completed successfully. Refreshing status...';
+          showToast('Sync complete');
+        } else if (success && errors.length > 0) {
+          const errorText = errors.join('\n');
+          syncLog.textContent = 'Sync completed with warnings:\n' + errorText;
+          showToast('Sync completed with warnings', false);
+        } else {
+          const errorText = errors.join('\n') || 'Unknown error';
+          syncLog.textContent = 'Sync failed:\n' + errorText;
+          showToast('Sync failed: ' + (errors[0] || 'Unknown error'), false);
+        }
+
         state.syncStatus = {};
         await loadSyncPreview();
         await refreshCurrentFolderStatuses();
-        showToast('Sync complete');
         return;
       }
 

@@ -522,9 +522,13 @@ function splitSelectionKey(string $key): ?array
     return ['share' => $share, 'folder' => $folder];
 }
 
-function getManagedState(string $uuid): array
+function getManagedState(string $mountpoint): array
 {
-    $file = managedFileForPlayer($uuid);
+    if ($mountpoint === '' || !is_dir($mountpoint)) {
+        return ['managed' => false, 'folders' => []];
+    }
+
+    $file = managedFileForPlayer($mountpoint);
     if (!is_file($file)) {
         return ['managed' => false, 'folders' => []];
     }
@@ -558,9 +562,12 @@ function getManagedState(string $uuid): array
     return ['managed' => true, 'folders' => array_keys($clean)];
 }
 
-function saveManagedState(string $uuid, array $folderKeys): void
+function saveManagedState(string $mountpoint, array $folderKeys): void
 {
-    ensureConfigDir();
+    if ($mountpoint === '' || !is_dir($mountpoint)) {
+        return;
+    }
+
     $clean = [];
     foreach ($folderKeys as $key) {
         if (!is_string($key)) {
@@ -580,7 +587,7 @@ function saveManagedState(string $uuid, array $folderKeys): void
         'updatedAt' => date('c'),
         'folders' => array_keys($clean),
     ];
-    @file_put_contents(managedFileForPlayer($uuid), json_encode($payload, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES) . PHP_EOL);
+    @file_put_contents(managedFileForPlayer($mountpoint), json_encode($payload, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES) . PHP_EOL);
 }
 
 function buildSelectionSet(array $selected): array
@@ -620,7 +627,7 @@ function checkFoldersSyncStatus(
 
     $settings = loadSettings();
     $selectedSet = buildSelectionSet($selectedOverride ?? ($settings['selectedFolders'] ?? []));
-    $managedState = getManagedState($uuid);
+    $managedState = getManagedState($mountpoint);
     $managedSet = array_fill_keys($managedState['folders'], true);
 
     $statuses = [];
@@ -691,7 +698,7 @@ function getSyncPreview(string $uuid, ?array $selectedOverride = null): array
         ];
     }
 
-    $managedState = getManagedState($uuid);
+    $managedState = getManagedState($mountpoint);
     $removeCandidates = [];
     if ($managedState['managed']) {
         foreach ($managedState['folders'] as $managedKey) {
@@ -874,7 +881,7 @@ function getAdoptPreview(string $uuid): array
     }
 
     return [
-        'managed' => (bool)getManagedState($uuid)['managed'],
+        'managed' => (bool)getManagedState($mountpoint)['managed'],
         'summary' => [
             'deleteFiles' => count($plan['deleteFiles']),
             'deleteDirs' => count($plan['deleteDirs']),
@@ -938,7 +945,7 @@ function adoptLibrary(string $uuid): array
         foreach ($selected as $entry) {
             $keys[] = selectionKey($entry['share'], $entry['folder']);
         }
-        saveManagedState($uuid, $keys);
+        saveManagedState($mountpoint, $keys);
 
         $settings['selectedFolders'] = $selected;
         $settings['lastPlayerId'] = $uuid;
@@ -972,10 +979,9 @@ function adoptLibrary(string $uuid): array
     }
 }
 
-function managedFileForPlayer(string $uuid): string
+function managedFileForPlayer(string $mountpoint): string
 {
-    $safe = preg_replace('/[^A-Za-z0-9_-]/', '-', $uuid);
-    return configDir() . '/managed-' . $safe . '.json';
+    return rtrim($mountpoint, '/') . '/.media-player-sync-managed.json';
 }
 
 function acquireLock(): bool
@@ -1056,18 +1062,28 @@ function doSyncPlayer(string $uuid): array
             );
             $result = run($cmd);
             $log[] = 'Syncing ' . $share . '/' . $folder;
+            $rsyncError = null;
             foreach ($result['output'] as $line) {
                 $log[] = $line;
                 if (preg_match('/Number of regular files transferred:\s+([0-9]+)/', $line, $m)) {
                     $copied += (int)$m[1];
                 }
+                if (preg_match('/No space left on device/', $line)) {
+                    $rsyncError = 'No space left on device';
+                } elseif (preg_match('/rsync error:/', $line) && $rsyncError === null) {
+                    $rsyncError = trim($line);
+                }
             }
             if ($result['code'] !== 0) {
-                $errors[] = 'rsync failed for ' . $share . '/' . $folder;
+                if ($rsyncError !== null) {
+                    $errors[] = 'rsync failed for ' . $share . '/' . $folder . ': ' . $rsyncError;
+                } else {
+                    $errors[] = 'rsync failed for ' . $share . '/' . $folder;
+                }
             }
         }
 
-        $previousManaged = getManagedState($uuid)['folders'];
+        $previousManaged = getManagedState($mountpoint)['folders'];
 
         $removed = 0;
         foreach ($previousManaged as $oldRelative) {
@@ -1093,7 +1109,7 @@ function doSyncPlayer(string $uuid): array
             }
         }
 
-        saveManagedState($uuid, array_keys($currentManaged));
+        saveManagedState($mountpoint, array_keys($currentManaged));
 
         $logPath = logDir() . '/sync-' . date('Ymd-His') . '.log';
         @file_put_contents($logPath, implode(PHP_EOL, $log) . PHP_EOL);
@@ -1186,7 +1202,12 @@ function runBackgroundSync(string $uuid, string $logFile): void
 
     @file_put_contents($logFile, implode(PHP_EOL, $log) . PHP_EOL);
 
-    clearSyncState();
+    writeSyncState([
+        'running' => false,
+        'completedAt' => date('c'),
+        'result' => $result,
+        'logFile' => $logFile,
+    ]);
 }
 
 function syncPlayer(string $uuid): array
@@ -1199,7 +1220,11 @@ function getSyncStatus(): array
     $state = readSyncState();
 
     if (!($state['running'] ?? false)) {
-        return ['running' => false];
+        return [
+            'running' => false,
+            'result' => $state['result'] ?? null,
+            'completedAt' => $state['completedAt'] ?? null,
+        ];
     }
 
     $logTail = [];
