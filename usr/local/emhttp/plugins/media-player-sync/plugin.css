@@ -56,6 +56,28 @@
   font-size: 12px;
 }
 
+.mps-how {
+  margin-top: 10px;
+  padding: 8px 10px;
+  border: 1px solid #ddd;
+  background: #f8f8f8;
+}
+
+.mps-how-title {
+  margin-bottom: 4px;
+  font-weight: 600;
+  color: #444;
+}
+
+.mps-how-list {
+  margin: 0 0 0 18px;
+  color: #555;
+}
+
+.mps-how-list li {
+  margin: 2px 0;
+}
+
 .mps-sync-preview {
   margin-bottom: 8px;
   padding: 8px 10px;
