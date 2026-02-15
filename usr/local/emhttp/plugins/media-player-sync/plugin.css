@@ -259,6 +259,11 @@
     margin-bottom: 0;
   }
 
+  #shareSelect {
+    min-height: 160px;
+    max-height: 220px;
+  }
+
   .mps-breadcrumb {
     white-space: nowrap;
     overflow-x: auto;

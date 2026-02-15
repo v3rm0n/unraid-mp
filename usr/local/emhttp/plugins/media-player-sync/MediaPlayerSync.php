@@ -944,8 +944,8 @@
           return;
         }
 
-        const wasIndeterminate = checkbox.indeterminate;
-        if (wasIndeterminate && checkbox.checked) {
+        const wasPartial = !isFolderSelected(share, checkbox.value) && hasSelectedDescendant(share, checkbox.value);
+        if (wasPartial && checkbox.checked) {
           clearFolderSelectionTree(share, checkbox.value);
           checkbox.checked = false;
           checkbox.indeterminate = false;
