@@ -9,7 +9,9 @@ Unraid Media Player Sync plugin for managing FAT32 media players (for example Ro
 - Detects attached FAT32 (`vfat`) player partitions.
 - Mounts and unmounts the selected player.
 - Lets you browse `/mnt/user` shares and select folders to sync.
+- Supports artist/album-level selection with partial-state handling (most specific path wins).
 - Shows sync preview status (on device, missing, removable managed folders).
+- Shows explicit "Will add on sync" and "Will remove on sync" lists.
 - Syncs with `rsync --ignore-existing` so existing files on the player are not overwritten.
 - Removes only previously plugin-managed folders that are now deselected.
 - Supports "Adopt Existing" for unmanaged players to align and convert them into managed mode.
@@ -27,6 +29,7 @@ Unraid Media Player Sync plugin for managing FAT32 media players (for example Ro
 ```
 
 - Managed state is tracked per player (`managed-<player-id>.json`).
+- On reload, UI selection is reset from the player's current managed/on-device baseline (unsynced UI edits are not persisted).
 - Unmanaged players are add-only during sync.
 - Managed players can prune stale plugin-managed folders.
 
@@ -78,7 +81,7 @@ Then open `/Settings/MediaPlayerSync`.
 Quick validation flow:
 
 1. Refresh players and mount a FAT32 device.
-2. Pick a share, add one or more folders, and save.
+2. Pick a share, select folders, and confirm preview add/remove lists.
 3. Confirm preview shows expected add/keep/remove counts.
 4. Run sync and review the log output.
 
