@@ -76,13 +76,13 @@
               <div class="mps-actions">
                 <input type="button" id="selectAllVisible" value="Select All" class="mps-btn mps-btn-neutral">
               </div>
-              <div id="addCandidatesBlock" class="mps-candidate-block mps-add-candidates" style="display: none;">
-                <div class="mps-candidate-title mps-add-title">Will add on sync</div>
-                <ul id="addCandidatesList" class="mps-candidate-list mps-add-list"></ul>
+              <div id="addCandidatesBlock" class="mps-candidate-block" style="display: none;">
+                <div class="mps-candidate-title">Will add on sync</div>
+                <ul id="addCandidatesList" class="mps-candidate-list"></ul>
               </div>
-              <div id="removalCandidatesBlock" class="mps-removal-candidates" style="display: none;">
-                <div class="mps-removal-title">Will remove on sync (managed)</div>
-                <ul id="removalCandidatesList" class="mps-removal-list"></ul>
+              <div id="removalCandidatesBlock" class="mps-candidate-block" style="display: none;">
+                <div class="mps-candidate-title">Will remove on sync</div>
+                <ul id="removalCandidatesList" class="mps-candidate-list"></ul>
               </div>
             </div>
           </div>

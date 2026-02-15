@@ -53,32 +53,17 @@
 
 .mps-candidate-block {
   margin-top: 8px;
+  border: 1px solid #d7dde5;
+  background: #f8fafc;
   border-radius: 4px;
   padding: 8px;
-}
-
-.mps-add-candidates {
-  border: 1px solid #c6d7ea;
-  background: #f2f8ff;
-}
-
-.mps-removal-candidates {
-  border: 1px solid #e5c8c8;
-  background: #fff6f6;
 }
 
 .mps-candidate-title {
   font-weight: 600;
   font-size: 12px;
+  color: #2d3f52;
   margin-bottom: 4px;
-}
-
-.mps-add-title {
-  color: #1d4f85;
-}
-
-.mps-removal-title {
-  color: #7d1f1f;
 }
 
 .mps-candidate-list {
@@ -86,14 +71,7 @@
   padding-left: 18px;
   max-height: 120px;
   overflow-y: auto;
-}
-
-.mps-add-list {
-  color: #1e456f;
-}
-
-.mps-removal-list {
-  color: #6a2222;
+  color: #324c67;
 }
 
 .mps-candidate-list li {
