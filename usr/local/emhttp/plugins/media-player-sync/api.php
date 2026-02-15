@@ -195,14 +195,19 @@ function getPlayers(): array
                 return;
             }
 
+            $mountpoint = (string)($device['mountpoint'] ?? '');
+            $isMounted = !empty($mountpoint);
+            $diskSpace = $isMounted ? getDiskSpace($mountpoint) : null;
+
             $players[] = [
                 'id' => ($device['uuid'] ?? '') !== '' ? $device['uuid'] : ($device['path'] ?? ''),
                 'path' => $device['path'] ?? '',
                 'label' => $device['label'] ?? '',
                 'uuid' => $device['uuid'] ?? '',
                 'size' => $device['size'] ?? '',
-                'mountpoint' => $device['mountpoint'] ?? '',
-                'mounted' => !empty($device['mountpoint']),
+                'mountpoint' => $mountpoint,
+                'mounted' => $isMounted,
+                'diskSpace' => $diskSpace,
             ];
         }
         if (is_array($children)) {
@@ -292,6 +297,60 @@ function readTail(string $file, int $lines = 20): array
     return array_slice($content, -$lines);
 }
 
+function getDiskSpace(string $mountpoint): ?array
+{
+    if ($mountpoint === '' || !is_dir($mountpoint)) {
+        return null;
+    }
+
+    $output = [];
+    $code = 0;
+    exec('df -B1 ' . escapeshellarg($mountpoint) . ' 2>/dev/null', $output, $code);
+
+    if ($code !== 0 || count($output) < 2) {
+        return null;
+    }
+
+    $line = $output[1];
+    $parts = preg_split('/\s+/', $line);
+    if (count($parts) < 6) {
+        return null;
+    }
+
+    $total = (int)$parts[1];
+    $used = (int)$parts[2];
+    $free = (int)$parts[3];
+
+    if ($total <= 0) {
+        return null;
+    }
+
+    $usedPercent = round(($used / $total) * 100, 1);
+    $freePercent = round(($free / $total) * 100, 1);
+
+    return [
+        'total' => $total,
+        'used' => $used,
+        'free' => $free,
+        'usedPercent' => $usedPercent,
+        'freePercent' => $freePercent,
+    ];
+}
+
+function formatBytes(int $bytes): string
+{
+    $units = ['B', 'KB', 'MB', 'GB', 'TB'];
+    $unitIndex = 0;
+    $value = $bytes;
+
+    while ($value >= 1024 && $unitIndex < count($units) - 1) {
+        $value /= 1024;
+        $unitIndex++;
+    }
+
+    return round($value, 2) . ' ' . $units[$unitIndex];
+}
+
 function mountPlayer(string $uuid): array
 {
     $player = playerByUuid($uuid);
@@ -335,7 +394,15 @@ function mountPlayer(string $uuid): array
         ];
     }
 
-    return ['ok' => true, 'mountpoint' => $mountpoint, 'message' => 'Mounted', 'logFile' => $logFile];
+    $diskSpace = getDiskSpace($mountpoint);
+
+    return [
+        'ok' => true,
+        'mountpoint' => $mountpoint,
+        'message' => 'Mounted',
+        'logFile' => $logFile,
+        'diskSpace' => $diskSpace,
+    ];
 }
 
 function unmountPlayer(string $uuid): array

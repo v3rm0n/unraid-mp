@@ -34,6 +34,15 @@
           </dl>
           <div id="playerInfo" class="mps-info"></div>
           <div id="playerManagedState" class="mps-managed-state"></div>
+          <div id="diskSpaceContainer" class="mps-disk-space" style="display: none;">
+            <div class="mps-disk-space-header">
+              <span class="mps-disk-space-label">Storage</span>
+              <span class="mps-disk-space-text" id="diskSpaceText"></span>
+            </div>
+            <div class="mps-progress-bar-bg">
+              <div class="mps-progress-bar-fill" id="diskSpaceBar"></div>
+            </div>
+          </div>
         </td>
       </tr>
     </tbody>
@@ -120,6 +129,7 @@
     expandedFolders: new Set(),
     syncStatus: {},
     selectedStatus: {},
+    removalCandidates: [],
     managed: null,
     syncPolling: null,
     isSyncing: false
@@ -169,6 +179,7 @@
   function resetStatusState() {
     state.syncStatus = {};
     state.selectedStatus = {};
+    state.removalCandidates = [];
     state.managed = null;
     updateFolderSyncIndicators();
     renderSelected();
@@ -280,11 +291,13 @@
       playerInfo.textContent = 'No FAT32 player found.';
       playerManagedState.textContent = '';
       updateToggleButton();
+      hideDiskSpace();
       return;
     }
     playerInfo.textContent = `Device: ${player.path} | UUID: ${player.uuid || 'n/a'} | Mount: ${player.mountpoint || 'not mounted'}`;
     if (!player.mounted) {
       playerManagedState.textContent = 'Mount a player to preview sync changes.';
+      hideDiskSpace();
     } else if (state.managed === true) {
       playerManagedState.textContent = 'Managed by plugin: deselected managed folders can be removed on sync.';
     } else if (state.managed === false) {
@@ -292,7 +305,65 @@
     } else {
       playerManagedState.textContent = 'Loading player sync state...';
     }
+    if (player.mounted && player.diskSpace) {
+      renderDiskSpace(player.diskSpace);
+    }
     updateToggleButton();
+  }
+
+  function renderDiskSpace(diskSpace) {
+    const container = document.getElementById('diskSpaceContainer');
+    const textEl = document.getElementById('diskSpaceText');
+    const barEl = document.getElementById('diskSpaceBar');
+
+    if (!diskSpace || typeof diskSpace !== 'object') {
+      hideDiskSpace();
+      return;
+    }
+
+    const { used, free, usedPercent } = diskSpace;
+    const total = used + free;
+
+    // Format bytes for display
+    const usedStr = formatBytes(used);
+    const totalStr = formatBytes(total);
+    const freeStr = formatBytes(free);
+
+    textEl.textContent = `${usedStr} / ${totalStr} (${freeStr} free)`;
+
+    barEl.style.width = `${usedPercent}%`;
+
+    // Remove all color classes
+    barEl.classList.remove('mps-space-high', 'mps-space-medium', 'mps-space-low');
+
+    // Add color class based on used space (inverse of free space)
+    if (usedPercent < 50) {
+      barEl.classList.add('mps-space-high');
+    } else if (usedPercent < 80) {
+      barEl.classList.add('mps-space-medium');
+    } else {
+      barEl.classList.add('mps-space-low');
+    }
+
+    container.style.display = 'block';
+  }
+
+  function hideDiskSpace() {
+    const container = document.getElementById('diskSpaceContainer');
+    container.style.display = 'none';
+  }
+
+  function formatBytes(bytes) {
+    const units = ['B', 'KB', 'MB', 'GB', 'TB'];
+    let value = bytes;
+    let unitIndex = 0;
+
+    while (value >= 1024 && unitIndex < units.length - 1) {
+      value /= 1024;
+      unitIndex++;
+    }
+
+    return value.toFixed(2) + ' ' + units[unitIndex];
   }
 
   function renderSelected() {
@@ -316,6 +387,16 @@
       }
       opt.className = badgeClass;
       opt.textContent = badgeText ? `${s.share}/${s.folder}   ${badgeText}` : `${s.share}/${s.folder}`;
+      selectedList.appendChild(opt);
+    }
+
+    // Show removal candidates (previously managed folders that will be removed)
+    for (const rc of state.removalCandidates || []) {
+      const opt = document.createElement('option');
+      opt.value = rc.key;
+      opt.className = 'selected-status-remove';
+      opt.textContent = `${rc.key}   − Will remove`;
+      opt.disabled = true;
       selectedList.appendChild(opt);
     }
   }
@@ -381,6 +462,7 @@
       for (const entry of json.selected || []) {
         state.selectedStatus[entry.key] = entry.state;
       }
+      state.removalCandidates = json.removeCandidates || [];
       renderSelected();
       renderSyncPreview(json);
       updateAdoptVisibility();
@@ -858,6 +940,9 @@
         return;
       }
       showToast(json.message || 'Mounted');
+      if (json.diskSpace) {
+        renderDiskSpace(json.diskSpace);
+      }
     }
     await loadPlayers(id);
     state.syncStatus = {};
