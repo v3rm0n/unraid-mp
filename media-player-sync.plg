@@ -6,7 +6,7 @@
 <!ENTITY launch "Settings/MediaPlayerSync">
 <!ENTITY pluginURL "https://raw.githubusercontent.com/v3rm0n/unraid-mp/main/media-player-sync.plg">
 ]>
-<PLUGIN name="&name;" author="&author;" version="&version;" pluginURL="&pluginURL;" launch="&launch;">
+<PLUGIN name="&name;" author="&author;" version="&version;" pluginURL="&pluginURL;" launch="&launch;" icon="fa-music">
   <CHANGES>
 ###0.1.5
 - Move plugin page to Settings -> User Utilities and launch via /Settings/MediaPlayerSync

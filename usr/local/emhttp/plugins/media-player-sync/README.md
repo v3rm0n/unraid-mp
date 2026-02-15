@@ -1,4 +1,4 @@
-# Unraid Media Player Sync
+## Unraid Media Player Sync
 
 Sync selected folders from `/mnt/user` to a mounted FAT32 media player.
 
