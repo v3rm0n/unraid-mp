@@ -27,7 +27,7 @@
             <div class="mps-how-title">How It Works</div>
             <ol class="mps-how-list">
               <li>Mount a FAT32 player so the plugin can read and write folder content.</li>
-              <li>Choose one or more source shares, browse folders, add them to the sync selection, then save.</li>
+              <li>Choose one or more source shares, browse folders, and add them to the sync selection.</li>
               <li>Sync preview compares selected folders against the device and shows what is already present, missing, or removable.</li>
               <li>Sync copies only missing files with rsync and removes deselected folders only when they are plugin-managed.</li>
               <li>Adopt Existing aligns the device with /mnt/user content and converts the player into managed mode.</li>
@@ -72,9 +72,7 @@
             </div>
           </div>
 
-          <div class="mps-actions mps-settings-actions">
-            <input type="button" id="saveSettings" value="Save" class="mps-btn mps-btn-primary">
-          </div>
+
         </td>
       </tr>
     </tbody>
@@ -948,13 +946,7 @@
       loadFolders();
     }
   });
-  document.getElementById('saveSettings').addEventListener('click', async () => {
-    try {
-      await saveSettings();
-    } catch (err) {
-      showToast(err.message, false);
-    }
-  });
+
   document.getElementById('startSync').addEventListener('click', syncNow);
   document.getElementById('adoptLibrary').addEventListener('click', adoptLibrary);
   playerSelect.addEventListener('change', async () => {
@@ -968,7 +960,7 @@
     await refreshCurrentFolderStatuses();
   });
 
-  document.getElementById('addSelection').addEventListener('click', () => {
+  document.getElementById('addSelection').addEventListener('click', async () => {
     const share = state.currentShare || shareSelect.value;
     const checked = folderTree.querySelectorAll('input[type="checkbox"]:checked');
     if (!share || checked.length === 0) {
@@ -987,8 +979,7 @@
     }
     state.selected.sort((a, b) => `${a.share}/${a.folder}`.localeCompare(`${b.share}/${b.folder}`));
     renderSelected();
-    loadSyncPreview();
-    refreshCurrentFolderStatuses();
+    await saveSettings({ silent: true });
     showToast(`Added ${checked.length} folder(s)`);
   });
 
@@ -998,12 +989,11 @@
     checkboxes.forEach(cb => cb.checked = !allChecked);
   });
 
-  document.getElementById('removeSelection').addEventListener('click', () => {
+  document.getElementById('removeSelection').addEventListener('click', async () => {
     const removed = new Set(Array.from(selectedList.selectedOptions).map((o) => o.value));
     state.selected = state.selected.filter((x) => !removed.has(`${x.share}:${x.folder}`));
     renderSelected();
-    loadSyncPreview();
-    refreshCurrentFolderStatuses();
+    await saveSettings({ silent: true });
   });
 
   (async function init() {
