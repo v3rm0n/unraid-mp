@@ -266,6 +266,16 @@
     normalizeSelectedFolders();
   }
 
+  function clearFolderSelectionTree(share, folder) {
+    state.selected = state.selected.filter((entry) => {
+      if (entry.share !== share) {
+        return true;
+      }
+      return !(entry.folder === folder || isAncestorPath(folder, entry.folder));
+    });
+    normalizeSelectedFolders();
+  }
+
   function sortSelectedFolders() {
     state.selected.sort((a, b) => `${a.share}/${a.folder}`.localeCompare(`${b.share}/${b.folder}`));
   }
@@ -933,7 +943,16 @@
         if (!share) {
           return;
         }
-        setFolderSelected(share, checkbox.value, checkbox.checked);
+
+        const wasIndeterminate = checkbox.indeterminate;
+        if (wasIndeterminate && checkbox.checked) {
+          clearFolderSelectionTree(share, checkbox.value);
+          checkbox.checked = false;
+          checkbox.indeterminate = false;
+        } else {
+          setFolderSelected(share, checkbox.value, checkbox.checked);
+        }
+
         checkbox.checked = isFolderSelected(share, checkbox.value);
         checkbox.indeterminate = !checkbox.checked && hasSelectedDescendant(share, checkbox.value);
         sortSelectedFolders();

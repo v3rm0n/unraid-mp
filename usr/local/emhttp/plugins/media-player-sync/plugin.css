@@ -207,6 +207,10 @@
 }
 
 @media (max-width: 900px) {
+  .mps-wrap {
+    margin-top: 8px;
+  }
+
   .mps-head-note {
     float: none;
     display: block;
@@ -221,6 +225,80 @@
 
   .mps-grid {
     grid-template-columns: 1fr;
+    gap: 12px;
+  }
+
+  .mps-folder-head {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .mps-selection-summary {
+    font-size: 11px;
+  }
+
+  .mps-candidate-list {
+    max-height: 160px;
+  }
+}
+
+@media (max-width: 700px) {
+  .mps-panel {
+    margin-bottom: 12px;
+  }
+
+  .mps-btn {
+    width: 100%;
+    min-width: 0;
+    margin-right: 0;
+    margin-bottom: 8px;
+    padding: 8px 12px;
+  }
+
+  .mps-actions .mps-btn {
+    margin-bottom: 0;
+  }
+
+  .mps-breadcrumb {
+    white-space: nowrap;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .mps-folder-tree {
+    max-height: 52vh;
+    padding: 6px;
+  }
+
+  .mps-folder-children {
+    margin-left: 14px;
+  }
+
+  .mps-folder-row {
+    align-items: flex-start;
+    min-height: 28px;
+    padding: 4px 0;
+  }
+
+  .mps-folder-label {
+    display: inline-flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 4px;
+    line-height: 1.25;
+  }
+
+  #syncLog {
+    max-height: 38vh;
+    padding: 8px;
+    font-size: 12px;
+  }
+
+  .mps-toast {
+    right: 10px;
+    left: 10px;
+    max-width: none;
+    min-width: 0;
   }
 }
 
