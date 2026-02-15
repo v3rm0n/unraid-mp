@@ -17,13 +17,13 @@
             <dt>Detected Player:</dt>
             <dd>
               <select id="playerSelect" class="mps-input"></select>
-              <input type="button" id="refreshPlayers" value="Refresh">
-              <input type="button" id="toggleMount" value="Mount">
+              <input type="button" id="refreshPlayers" value="Refresh" class="mps-btn mps-btn-neutral">
+              <input type="button" id="toggleMount" value="Mount" class="mps-btn mps-btn-primary">
             </dd>
           </dl>
           <div id="playerInfo" class="mps-info"></div>
           <div id="playerManagedState" class="mps-managed-state"></div>
-          <div class="mps-how">
+          <div class="mps-card mps-how">
             <div class="mps-how-title">How It Works</div>
             <ol class="mps-how-list">
               <li>Mount a FAT32 player so the plugin can read and write folder content.</li>
@@ -54,26 +54,26 @@
             <div>
               <div class="mps-col-title">Shares</div>
               <select id="shareSelect" size="10"></select>
-              <div class="mps-actions"><input type="button" id="loadFolders" value="Browse Folders"></div>
+              <div class="mps-info">Selecting a share automatically loads folders.</div>
             </div>
             <div>
               <div class="mps-col-title">Folders In Share</div>
               <div class="mps-breadcrumb" id="folderBreadcrumb"></div>
               <div id="folderTree" class="mps-folder-tree"></div>
               <div class="mps-actions">
-                <input type="button" id="addSelection" value="Add Selected">
-                <input type="button" id="selectAllVisible" value="Select All Visible">
+                <input type="button" id="addSelection" value="Add Selected" class="mps-btn mps-btn-primary">
+                <input type="button" id="selectAllVisible" value="Select All Visible" class="mps-btn mps-btn-neutral">
               </div>
             </div>
             <div>
               <div class="mps-col-title">Selected For Sync</div>
               <select id="selectedList" size="10" multiple></select>
-              <div class="mps-actions"><input type="button" id="removeSelection" value="Remove Selected"></div>
+              <div class="mps-actions"><input type="button" id="removeSelection" value="Remove Selected" class="mps-btn mps-btn-neutral"></div>
             </div>
           </div>
 
           <div class="mps-actions mps-settings-actions">
-            <input type="button" id="saveSettings" value="Save">
+            <input type="button" id="saveSettings" value="Save" class="mps-btn mps-btn-primary">
           </div>
         </td>
       </tr>
@@ -92,9 +92,10 @@
     <tbody>
       <tr>
         <td>
-          <div id="syncPreview" class="mps-sync-preview"></div>
-          <input type="button" id="adoptLibrary" value="Adopt From Unraid" class="mps-danger">
-          <input type="button" id="startSync" value="Sync Now">
+          <div id="syncPreview" class="mps-card mps-sync-preview"></div>
+          <div class="mps-status-legend">Status: On device (keep) | Missing (add) | Managed only (remove)</div>
+          <input type="button" id="adoptLibrary" value="Adopt From Unraid" class="mps-btn mps-btn-danger">
+          <input type="button" id="startSync" value="Sync Now" class="mps-btn mps-btn-primary">
           <pre id="syncLog"></pre>
         </td>
       </tr>
@@ -671,7 +672,8 @@
     }
   }
 
-  async function saveSettings() {
+  async function saveSettings(options = {}) {
+    const silent = !!options.silent;
     const payload = {
       selectedFolders: state.selected,
       lastPlayerId: playerSelect.value || '',
@@ -684,7 +686,9 @@
     }
     await loadSyncPreview();
     await refreshCurrentFolderStatuses();
-    showToast('Settings saved');
+    if (!silent) {
+      showToast('Settings saved');
+    }
   }
 
   function updateToggleButton() {
@@ -831,7 +835,7 @@
   }
 
   async function syncNow() {
-    await saveSettings();
+    await saveSettings({ silent: true });
 
     const id = playerSelect.value;
     if (!id) {
@@ -883,7 +887,6 @@
     await refreshCurrentFolderStatuses();
   });
   document.getElementById('toggleMount').addEventListener('click', toggleMount);
-  document.getElementById('loadFolders').addEventListener('click', loadFolders);
   shareSelect.addEventListener('change', () => {
     state.lastBrowseShare = shareSelect.value || '';
     if (shareSelect.value) {

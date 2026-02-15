@@ -38,11 +38,35 @@
   margin-top: 8px;
 }
 
-.mps-actions input[type="button"] {
+.mps-btn {
   width: auto;
   min-width: 100px;
   padding: 4px 12px;
   margin-right: 8px;
+}
+
+.mps-btn-primary {
+  background: #2e7d32;
+  border-color: #1f5f25;
+  color: #fff;
+}
+
+.mps-btn-neutral {
+  background: #f2f2f2;
+  border-color: #cfcfcf;
+  color: #333;
+}
+
+.mps-btn-danger {
+  background: #c0392b;
+  border-color: #992d22;
+  color: #fff;
+}
+
+.mps-btn:disabled {
+  background: #ccc;
+  border-color: #bbb;
+  color: #666;
 }
 
 .mps-info {
@@ -56,7 +80,7 @@
   font-size: 12px;
 }
 
-.mps-how {
+.mps-card {
   margin-top: 10px;
   padding: 8px 10px;
   border: 1px solid #ddd;
@@ -80,22 +104,12 @@
 
 .mps-sync-preview {
   margin-bottom: 8px;
-  padding: 8px 10px;
-  border: 1px solid #ddd;
-  background: #f8f8f8;
   color: #444;
 }
 
-input.mps-danger {
-  margin-right: 8px;
-  background: #c0392b;
-  border-color: #992d22;
-  color: #fff;
-}
-
-input.mps-danger:disabled {
-  background: #ccc;
-  border-color: #bbb;
+.mps-status-legend {
+  margin-bottom: 8px;
+  font-size: 12px;
   color: #666;
 }
 
