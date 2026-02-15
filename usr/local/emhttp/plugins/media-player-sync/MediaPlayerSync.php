@@ -956,6 +956,14 @@
     const res = await api('getSettings');
     state.lastBrowseShare = typeof res.settings.lastBrowseShare === 'string' ? res.settings.lastBrowseShare : '';
     state.selected = Array.isArray(res.settings.selectedFolders) ? res.settings.selectedFolders : [];
+
+    if (state.lastBrowseShare) {
+      const hasSavedShare = Array.from(shareSelect.options).some((option) => option.value === state.lastBrowseShare);
+      if (hasSavedShare) {
+        shareSelect.value = state.lastBrowseShare;
+      }
+    }
+
     normalizeSelectedFolders();
     sortSelectedFolders();
     resetStatusState();
@@ -1231,6 +1239,7 @@
     if (shareSelect.value) {
       loadFolders();
     }
+    queueSelectionSave();
   });
 
   document.getElementById('startSync').addEventListener('click', syncNow);
