@@ -76,6 +76,10 @@
               <div class="mps-actions">
                 <input type="button" id="selectAllVisible" value="Select All" class="mps-btn mps-btn-neutral">
               </div>
+              <div class="mps-selected-block">
+                <div class="mps-selected-title">Selected Paths</div>
+                <ul id="selectedPathsList" class="mps-selected-list"></ul>
+              </div>
               <div id="removalCandidatesBlock" class="mps-removal-candidates" style="display: none;">
                 <div class="mps-removal-title">Will remove on sync (managed)</div>
                 <ul id="removalCandidatesList" class="mps-removal-list"></ul>
@@ -145,6 +149,7 @@
   const selectionSummary = document.getElementById('selectionSummary');
   const removalCandidatesBlock = document.getElementById('removalCandidatesBlock');
   const removalCandidatesList = document.getElementById('removalCandidatesList');
+  const selectedPathsList = document.getElementById('selectedPathsList');
   const selectAllVisibleButton = document.getElementById('selectAllVisible');
   const syncLog = document.getElementById('syncLog');
   const toast = document.getElementById('toast');
@@ -156,6 +161,43 @@
 
   function canonicalKey(share, folder) {
     return `${share}/${folder}`;
+  }
+
+  function pathDepth(path) {
+    return path.split('/').length;
+  }
+
+  function isSameOrChildPath(candidate, base) {
+    return candidate === base || candidate.startsWith(`${base}/`);
+  }
+
+  function isAncestorPath(candidate, descendant) {
+    return descendant.startsWith(`${candidate}/`);
+  }
+
+  function hasSelectedDescendant(share, folder) {
+    return state.selected.some((entry) => entry.share === share && isAncestorPath(folder, entry.folder));
+  }
+
+  function normalizeSelectedFolders() {
+    const sorted = [...state.selected].sort((a, b) => {
+      const depthDiff = pathDepth(b.folder) - pathDepth(a.folder);
+      if (depthDiff !== 0) {
+        return depthDiff;
+      }
+      return canonicalKey(a.share, a.folder).localeCompare(canonicalKey(b.share, b.folder));
+    });
+
+    const normalized = [];
+    for (const entry of sorted) {
+      const overlapsDeeper = normalized.some((kept) => kept.share === entry.share && isSameOrChildPath(kept.folder, entry.folder));
+      if (!overlapsDeeper) {
+        normalized.push(entry);
+      }
+    }
+
+    normalized.sort((a, b) => canonicalKey(a.share, a.folder).localeCompare(canonicalKey(b.share, b.folder)));
+    state.selected = normalized;
   }
 
   function renderBrowseShares(shares) {
@@ -199,10 +241,25 @@
   function setFolderSelected(share, folder, selected) {
     const index = state.selected.findIndex((entry) => entry.share === share && entry.folder === folder);
     if (selected && index === -1) {
-      state.selected.push({ share, folder });
+      const hasDescendants = hasSelectedDescendant(share, folder);
+      if (!hasDescendants) {
+        state.selected.push({ share, folder });
+      }
+
+      state.selected = state.selected.filter((entry) => {
+        if (entry.share !== share) {
+          return true;
+        }
+        if (entry.folder === folder) {
+          return true;
+        }
+        return !isAncestorPath(entry.folder, folder);
+      });
     } else if (!selected && index !== -1) {
       state.selected.splice(index, 1);
     }
+
+    normalizeSelectedFolders();
   }
 
   function sortSelectedFolders() {
@@ -234,7 +291,25 @@
     } else {
       selectionSummary.textContent = `Selected: ${total}`;
     }
+    renderSelectedPaths();
     renderRemovalCandidates();
+  }
+
+  function renderSelectedPaths() {
+    selectedPathsList.innerHTML = '';
+    if (state.selected.length === 0) {
+      const item = document.createElement('li');
+      item.className = 'mps-selected-empty';
+      item.textContent = 'No folders selected.';
+      selectedPathsList.appendChild(item);
+      return;
+    }
+
+    for (const entry of state.selected) {
+      const item = document.createElement('li');
+      item.textContent = `${entry.share}/${entry.folder}`;
+      selectedPathsList.appendChild(item);
+    }
   }
 
   function updateSelectAllButtonLabel() {
@@ -606,7 +681,7 @@
     folderTree.querySelectorAll('.mps-folder-row').forEach(row => {
       const path = row.dataset.path;
       const status = path ? state.syncStatus[canonicalKey(state.currentShare, path)] : 'none';
-      row.classList.remove('synced', 'status-keep', 'status-add', 'status-remove', 'status-external');
+      row.classList.remove('synced', 'status-keep', 'status-add', 'status-remove', 'status-external', 'status-partial');
       if (status === 'keep') {
         row.classList.add('synced', 'status-keep');
       } else if (status === 'add') {
@@ -615,6 +690,32 @@
         row.classList.add('status-remove');
       } else if (status === 'external') {
         row.classList.add('status-external');
+      }
+
+      if (state.currentShare && path && hasSelectedDescendant(state.currentShare, path) && !isFolderSelected(state.currentShare, path)) {
+        row.classList.add('status-partial');
+      }
+
+      const checkbox = row.querySelector('input[type="checkbox"]');
+      if (!checkbox) {
+        return;
+      }
+
+      checkbox.indeterminate = false;
+      if (!state.currentShare || !path) {
+        return;
+      }
+
+      if (isFolderSelected(state.currentShare, path)) {
+        checkbox.checked = true;
+        return;
+      }
+
+      if (hasSelectedDescendant(state.currentShare, path)) {
+        checkbox.checked = false;
+        checkbox.indeterminate = true;
+      } else {
+        checkbox.checked = false;
       }
     });
   }
@@ -816,8 +917,11 @@
           return;
         }
         setFolderSelected(share, checkbox.value, checkbox.checked);
+        checkbox.checked = isFolderSelected(share, checkbox.value);
+        checkbox.indeterminate = !checkbox.checked && hasSelectedDescendant(share, checkbox.value);
         sortSelectedFolders();
         renderSelectionSummary();
+        updateFolderSyncIndicators();
         updateSelectAllButtonLabel();
         queueSelectionSave();
       });
@@ -834,6 +938,7 @@
     const res = await api('getSettings');
     state.lastBrowseShare = typeof res.settings.lastBrowseShare === 'string' ? res.settings.lastBrowseShare : '';
     state.selected = Array.isArray(res.settings.selectedFolders) ? res.settings.selectedFolders : [];
+    normalizeSelectedFolders();
     sortSelectedFolders();
     resetStatusState();
     renderSelectionSummary();
@@ -1133,9 +1238,12 @@
     checkboxes.forEach((checkbox) => {
       checkbox.checked = !allChecked;
       setFolderSelected(share, checkbox.value, checkbox.checked);
+      checkbox.checked = isFolderSelected(share, checkbox.value);
+      checkbox.indeterminate = !checkbox.checked && hasSelectedDescendant(share, checkbox.value);
     });
     sortSelectedFolders();
     renderSelectionSummary();
+    updateFolderSyncIndicators();
     updateSelectAllButtonLabel();
     queueSelectionSave();
   });

@@ -589,6 +589,39 @@ function splitSelectionKey(string $key): ?array
     return ['share' => $share, 'folder' => $folder];
 }
 
+function folderPathOverlaps(string $a, string $b): bool
+{
+    return $a === $b || str_starts_with($a, $b . '/') || str_starts_with($b, $a . '/');
+}
+
+function selectionKeyOverlaps(string $a, string $b): bool
+{
+    $aParts = splitSelectionKey($a);
+    $bParts = splitSelectionKey($b);
+    if ($aParts === null || $bParts === null) {
+        return false;
+    }
+    if ($aParts['share'] !== $bParts['share']) {
+        return false;
+    }
+
+    return folderPathOverlaps($aParts['folder'], $bParts['folder']);
+}
+
+function selectionSetOverlapsKey(array $selectionSet, string $key): bool
+{
+    foreach ($selectionSet as $selectedKey => $enabled) {
+        if (!$enabled || !is_string($selectedKey)) {
+            continue;
+        }
+        if (selectionKeyOverlaps($selectedKey, $key)) {
+            return true;
+        }
+    }
+
+    return false;
+}
+
 function getManagedState(string $mountpoint): array
 {
     if ($mountpoint === '' || !is_dir($mountpoint)) {
@@ -706,13 +739,14 @@ function checkFoldersSyncStatus(
         $key = selectionKey($share, $folder);
         $exists = is_dir(destinationPath($mountpoint, $share, $folder));
         $isSelected = isset($selectedSet[$key]);
+        $overlapsSelected = selectionSetOverlapsKey($selectedSet, $key);
         $isManaged = isset($managedSet[$key]);
 
         if ($isSelected && $exists) {
             $statuses[$folder] = 'keep';
         } elseif ($isSelected && !$exists) {
             $statuses[$folder] = 'add';
-        } elseif ($isManaged && $exists) {
+        } elseif ($isManaged && $exists && !$overlapsSelected) {
             $statuses[$folder] = 'remove';
         } elseif ($exists) {
             $statuses[$folder] = 'external';
@@ -769,7 +803,7 @@ function getSyncPreview(string $uuid, ?array $selectedOverride = null): array
     $removeCandidates = [];
     if ($managedState['managed']) {
         foreach ($managedState['folders'] as $managedKey) {
-            if (isset($selectedSet[$managedKey])) {
+            if (selectionSetOverlapsKey($selectedSet, $managedKey)) {
                 continue;
             }
             $parts = splitSelectionKey($managedKey);
@@ -1157,7 +1191,7 @@ function doSyncPlayer(string $uuid): array
             if (!is_string($oldRelative) || !isSafeRelativePath($oldRelative)) {
                 continue;
             }
-            if (isset($currentManaged[$oldRelative])) {
+            if (selectionSetOverlapsKey($currentManaged, $oldRelative)) {
                 continue;
             }
 
